@@ -1,0 +1,54 @@
+# Gentoo Linux Documentation
+
+A personal, opinionated guide to installing and configuring Gentoo Linux on a
+laptop with full-disk encryption (LUKS + LVM), systemd, GNOME and an Intel
+platform. The steps reflect a working real-world setup rather than a generic
+handbook — adapt device names, UUIDs, and hardware-specific flags to your own
+machine.
+
+> These notes assume familiarity with the [official Gentoo Handbook](https://wiki.gentoo.org/wiki/Handbook:Main_Page).
+> Where this guide intentionally diverges from the handbook, it says so.
+
+## Conventions
+
+Commands use `<placeholders>` for values you must substitute. For reference, the
+concrete values this guide was written against (the author's machine — an HP
+ZBook Firefly G9) are shown alongside as examples:
+
+| Placeholder | Example (this guide) | How to find yours |
+| --- | --- | --- |
+| `<user>` | `ivmr` | your login username |
+| `<hostname>` | `ivmr-laptop` | your chosen hostname |
+| `<crypt-partition>` | `/dev/nvme0n1p3` | `fdisk -l` (the empty partition to encrypt) |
+| `<efi-partition>` | `/dev/nvme0n1p1` | `fdisk -l` (the fat32 EFI partition) |
+| disk/partition UUIDs | the values in the fstab/GRUB samples | `blkid` |
+
+The fstab and GRUB samples keep the author's real UUIDs as a realistic example —
+**replace them with the output of `blkid` on your own machine.**
+
+## Contents
+
+The guide follows the installation flow top to bottom:
+
+1. [Before Installation](01-before-installation.md) — bootable USB, disk
+   encryption, LVM, and filesystem preparation.
+2. [Installation](02-installation.md) — stage3, chroot, Portage, kernel, fstab,
+   systemd, bootloader, users, and GNOME.
+3. [After Installation](03-after-installation.md) — sudo, services, GNOME
+   tweaks, Intel VAAPI, power management, and Portage-over-git sync.
+4. [Application Configuration](04-application-configuration.md) — Docker,
+   IntelliJ IDEA, and other applications.
+5. [Troubleshooting](05-troubleshooting.md) — fixes for common Wi-Fi and other
+   issues.
+
+### Reference
+
+- [Access System from a Live USB](06-access-system-from-live-usb.md) — unlock
+  an encrypted disk and chroot in for recovery.
+- [Various Tasks](07-various-tasks.md) — fonts, BIOS updates, and other
+  one-off tasks.
+
+## Contributing
+
+Found something out of date or have a better default? Open an issue or a pull
+request — corrections and hardware-specific notes are welcome.

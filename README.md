@@ -1,3 +1,21 @@
 # Gentoo Linux Documentation
 
-See **[Wiki](https://github.com/ivanmrva/gentoo-docs/wiki/)**.
+A personal, opinionated guide to installing and configuring Gentoo Linux on a
+laptop with full-disk encryption (LUKS + LVM), systemd, GNOME and an Intel
+platform.
+
+📖 **Start here: [docs/](docs/README.md)**
+
+1. [Before Installation](docs/01-before-installation.md)
+2. [Installation](docs/02-installation.md)
+3. [After Installation](docs/03-after-installation.md)
+4. [Application Configuration](docs/04-application-configuration.md)
+5. [Troubleshooting](docs/05-troubleshooting.md)
+
+Reference: [Access System from a Live USB](docs/06-access-system-from-live-usb.md) ·
+[Various Tasks](docs/07-various-tasks.md)
+
+> Adapt device names, UUIDs, and hardware-specific flags to your own machine.
+> Where this guide intentionally diverges from the
+> [official Gentoo Handbook](https://wiki.gentoo.org/wiki/Handbook:Main_Page),
+> it says so. Corrections and pull requests welcome.
