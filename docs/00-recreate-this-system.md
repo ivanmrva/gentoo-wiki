@@ -60,9 +60,12 @@ flags, USE flags, licenses, keywords. Get this right before compiling anything.
    decisions: `-march=alderlake` (use your CPU), the GNOME/Wayland USE set,
    `VIDEO_CARDS="intel"` + `LIBVA_DRIVER_NAME="iHD"`, the **narrowed**
    `ACCEPT_LICENSE`, and `FEATURES="buildpkg"`.
-3. **Keyword decision:** this machine runs `~amd64` globally; the recommended
-   alternative is a stable base + a short
-   [`package.accept_keywords`](08-system-reference.md#best-practice-notes) list.
+3. **Keyword decision:** this machine runs `~amd64` (testing) globally on
+   purpose, for the latest GNOME + dev tooling, taming the recompile churn with
+   `-bin` packages, out-of-Portage runtime managers, `buildpkg`, and update
+   cadence — see
+   [Keyword strategy](08-system-reference.md#keyword-strategy-decided-stay-on-testing).
+   A stable base is the lower-churn alternative if you don't need latest-everything.
 4. Set the `tmpfs` build dir to **16 GiB** (below RAM) in fstab (step 5).
 
 ### 4. Build the kernel (dist-kernel + dracut) → [02 · Configure Kernel](02-installation.md#configure-kernel)

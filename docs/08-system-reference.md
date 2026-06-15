@@ -205,30 +205,40 @@ Passwordless sudo for `%wheel` (`/etc/sudoers`).
   disk-backed tmpdir via `/etc/portage/env` + `package.env` (the big apps here
   are `-bin`, so this is rarely hit).
 
-**Open** (worth revisiting on the next rebuild):
+- ✅ **`>app-arch/zstd-1.5.5` mask removed** — it was stale (pinned 1.5.5 while
+  1.5.7-r1 was available); dropped and rebuilt.
 
-- **`ACCEPT_KEYWORDS="~amd64"` globally** — full testing branch system-wide is
-  higher-maintenance than a stable base with per-package `~amd64`. If switching
-  to stable, the only installed packages with **no stable version** (so they
-  *must* be keyworded) are:
+## Keyword strategy (decided: stay on testing)
 
-  ```
-  # /etc/portage/package.accept_keywords  — required (no stable version exists)
-  net-im/slack          ~amd64
-  net-im/zoom           ~amd64
-  x11-apps/igt-gpu-tools ~amd64
-  ```
+This machine runs **`ACCEPT_KEYWORDS="~amd64"` globally on purpose** — the goal
+is the latest GNOME and the latest developer tooling, and trying to pin a stable
+base would mean hand-keywording most of the system anyway (latest GNOME alone
+drags in a large testing-library cascade). It's a conscious trade-off: more
+frequent updates in exchange for newest software.
 
-  Recommended to *also* keyword (stable lags and these are security/hardware- or
-  fast-moving): `sys-firmware/intel-microcode`, `sys-kernel/linux-firmware`,
-  `sys-firmware/sof-firmware`, `sys-apps/fwupd`, `sys-power/tlp`,
-  `sys-power/thermald`, `app-containers/docker`, `app-containers/docker-compose`,
-  `sys-cluster/kubectl`, `app-admin/terraform`. Everything else installed from
-  testing has a stable version and would simply downgrade.
+The downside of global testing — frequent recompiles — is managed **without**
+dropping to stable:
 
-- **`>app-arch/zstd-1.5.5` mask** — stale: it pins zstd to 1.5.5 while 1.5.7-r1
-  is available. Drop the line and `emerge -1 zstd` unless a specific reason is
-  found.
+- **`-bin` packages** for the heavyweights (browsers, office, editor, JDK) so
+  they never compile.
+- **Language runtimes managed outside Portage** (a version manager such as
+  `mise`/`asdf` for Node, Python, …) so new releases don't trigger rebuilds.
+- **`FEATURES="buildpkg"`** for instant rollback/reinstall from the local
+  binary-package cache.
+- **Batched update cadence** (weekly/biweekly, not daily) — you choose when to
+  `emerge -uDN`, so churn is a cadence decision, not something the branch forces.
+- Keep USE flags stable (USE changes cause mass rebuilds) and avoid `**`/`-9999`
+  live ebuilds (they rebuild every sync).
+
+**If you ever did want a stable base instead**, the only installed packages with
+no stable version (so they'd *have* to be keyworded) are `net-im/slack`,
+`net-im/zoom`, `x11-apps/igt-gpu-tools`; you'd likely also keyword the
+security/hardware/fast-moving ones (`intel-microcode`, `linux-firmware`,
+`sof-firmware`, `fwupd`, `tlp`, `thermald`, `docker`, `kubectl`, `terraform`).
+Everything else installed from testing has a stable version and would downgrade.
+
+## Open
+
 - **Unencrypted kernel + initramfs on the EFI partition** — fine for most
   threat models, but Secure Boot + a signed Unified Kernel Image (UKI) would
   close the evil-maid gap if desired.

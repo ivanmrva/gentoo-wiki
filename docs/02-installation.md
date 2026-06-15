@@ -83,8 +83,9 @@
    * `ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE BUSL-1.1 Microsoft-vscode all-rights-reserved google-chrome"`
    * This accepts free + binary-redistributable licenses, plus the specific proprietary licenses needed by the installed apps (Terraform, VS Code, Slack/Zoom, Chrome). It is deliberately **not** a blanket `"*"`, so any *new* non-free package surfaces its license for an explicit decision. Add tokens as you install more proprietary software.
 1. Set ACCEPT_KEYWORDS in _/etc/portage/make.conf_:
-   * `ACCEPT_KEYWORDS="~amd64"` (this machine runs the testing branch globally)
-   * **Recommended alternative:** a stable base (`ACCEPT_KEYWORDS="amd64"`, or simply omit it) plus per-package testing in `/etc/portage/package.accept_keywords`. See [System Reference → Best-practice notes](08-system-reference.md#best-practice-notes) for the exact list of packages that need a `~amd64` keyword.
+   * `ACCEPT_KEYWORDS="~amd64"` — this machine **deliberately runs the testing branch globally**, for the latest GNOME and developer tooling.
+   * It's a conscious trade-off (more frequent updates for newest software). The recompile churn is kept manageable **without** going stable — via `-bin` packages for the heavyweights, managing language runtimes outside Portage (e.g. `mise`), `FEATURES="buildpkg"`, and a weekly/biweekly update cadence. See [System Reference → Keyword strategy](08-system-reference.md#keyword-strategy-decided-stay-on-testing).
+   * A stable base with per-package `~amd64` is the lower-churn alternative if you don't need latest-everything.
 1. Set LINGUAS in _/etc/portage/make.conf_:
    * `LINGUAS=""` (setting to empty value, which is different than unset means only installing a default language for each package)
 1. Save/preserve portage elogs:
