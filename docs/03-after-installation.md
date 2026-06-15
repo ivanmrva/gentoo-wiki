@@ -18,11 +18,27 @@
    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}history -a; history -c; history -r"
    ````
 
+# Audio (PipeWire)
+
+Audio is handled by **PipeWire** with **WirePlumber** as the session manager
+(the modern replacement for PulseAudio; the GNOME profile pulls it in). Enable
+the user services:
+
+1. `systemctl --user enable wireplumber.service`
+1. The `pipewire.socket` and `pipewire-pulse.socket` user sockets provide the
+   PulseAudio-compatible API for apps that still expect it — they are enabled by
+   default with the package; verify with `systemctl --user list-unit-files --state=enabled`.
+
 # Systemd services
 
-1. Enable useful services to run on startup:
-   * `systemctl --user enable pulseaudio.service pulseaudio.socket`
+1. Enable useful system services as you install their packages:
    * `systemctl enable bluetooth.service`
+   * `systemctl enable docker.service` (see [Application Configuration](04-application-configuration.md#docker))
+   * `systemctl enable earlyoom.service` (kills runaway processes before the system OOM-freezes)
+   * `systemctl enable smartd.service` (S.M.A.R.T. disk monitoring, from `smartmontools`)
+   * `systemctl enable lm_sensors.service` (after running `sensors-detect`)
+   * `systemctl enable nftables.service` (firewall — remember to actually populate `/etc/nftables.conf`)
+   * `systemctl enable fstrim.timer` (periodic SSD TRIM)
 
 # Gnome Configuration
 
@@ -121,7 +137,13 @@ Check also https://wiki.gentoo.org/wiki/Power_management/Guide
 1. Next time use module DB for kernel compilation:
    * `make LSMOD=$HOME/.config/modprobed.db localmodconfig`
 
-# Portage Repo Sync over GIT
+# Optional: Sync Portage over GIT
+
+> This guide's machine currently uses the **default rsync sync**
+> (`sync-type = rsync`, `rsync://rsync.gentoo.org/gentoo-portage`) that the
+> stage3 ships with — it works fine and is OpenPGP-verified. The git method
+> below is an optional alternative (full history, easy local diffs); switch to
+> it only if you want those.
 
 1. Create `/etc/portage/repos.conf/gentoo.conf` file with the following content
 
