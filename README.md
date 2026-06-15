@@ -4,7 +4,8 @@ A personal, opinionated guide to installing and configuring Gentoo Linux on a
 laptop with full-disk encryption (LUKS + LVM), systemd, GNOME and an Intel
 platform.
 
-📖 **Start here: [docs/](docs/README.md)**
+📖 **Start here: [docs/](docs/README.md)** — or jump straight to the
+[step-by-step recreate/migrate runbook](docs/00-recreate-this-system.md).
 
 1. [Before Installation](docs/01-before-installation.md)
 2. [Installation](docs/02-installation.md)

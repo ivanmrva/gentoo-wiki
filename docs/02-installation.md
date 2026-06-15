@@ -80,9 +80,11 @@
    * _libunput_ is used by Intel cards and should be portage default, therefore no entry is required.
    * Verify what portage is using: `portageq envvar INPUT_DEVICES`
 1. Set ACCEPT_LICENSE in _/etc/portage/make.conf_:
-   * `ACCEPT_LICENSE="*"` (accepting every license for every package at any version)
+   * `ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE BUSL-1.1 Microsoft-vscode all-rights-reserved google-chrome"`
+   * This accepts free + binary-redistributable licenses, plus the specific proprietary licenses needed by the installed apps (Terraform, VS Code, Slack/Zoom, Chrome). It is deliberately **not** a blanket `"*"`, so any *new* non-free package surfaces its license for an explicit decision. Add tokens as you install more proprietary software.
 1. Set ACCEPT_KEYWORDS in _/etc/portage/make.conf_:
-   * `ACCEPT_KEYWORDS="~amd64"` (allowing testing packages beeing installed, not just stable)
+   * `ACCEPT_KEYWORDS="~amd64"` (this machine runs the testing branch globally)
+   * **Recommended alternative:** a stable base (`ACCEPT_KEYWORDS="amd64"`, or simply omit it) plus per-package testing in `/etc/portage/package.accept_keywords`. See [System Reference → Best-practice notes](08-system-reference.md#best-practice-notes) for the exact list of packages that need a `~amd64` keyword.
 1. Set LINGUAS in _/etc/portage/make.conf_:
    * `LINGUAS=""` (setting to empty value, which is different than unset means only installing a default language for each package)
 1. Save/preserve portage elogs:
@@ -175,9 +177,10 @@
      UUID=9adc7927-7432-47b6-b9cb-9a87b757784d  /data3			ext4	defaults,noatime	0 2
      UUID=a8b47f07-4b28-499f-aea0-47e168920f7a	/data4			ext4	defaults,noatime	0 2
      UUID=d470ac2b-8f98-4898-977e-525e56dfaff7	/data5			ext4	defaults,noatime	0 2
-     tmpfs	/var/tmp/portage	tmpfs	size=32G,uid=portage,gid=portage,mode=775,nosuid,noatime,nodev	0 0
+     tmpfs	/var/tmp/portage	tmpfs	size=16G,uid=portage,gid=portage,mode=775,nosuid,noatime,nodev	0 0
      ```
       * get UUIDs with `blkid`
+      * The `tmpfs` line builds packages in RAM for speed. Keep `size` **below** total RAM (16 GiB here, on a 32 GiB machine) so a large build can't exhaust memory. Packages that need a bigger build dir than this should be redirected to a disk-backed `PORTAGE_TMPDIR` via `/etc/portage/env`.
 
 # Configure Systemd
 

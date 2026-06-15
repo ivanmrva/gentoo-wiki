@@ -67,7 +67,7 @@ USE="-branding -qt5 wayland -X vaapi cryptsetup lvm device-mapper cacert dist-ke
 
 MAKEOPTS="-j16"
 
-ACCEPT_LICENSE="*"
+ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE BUSL-1.1 Microsoft-vscode all-rights-reserved google-chrome"
 ACCEPT_KEYWORDS="~amd64"
 
 LINGUAS=""
@@ -89,6 +89,11 @@ FEATURES="buildpkg"
 Regenerate `CPU_FLAGS_X86` with `cpuid2cpuflags`. `MICROCODE_SIGNATURES`
 restricts `intel-microcode` to this CPU's signature (`0x000906a3` = Alder
 Lake-P, family/model/stepping `06-9a-03`).
+
+`ACCEPT_LICENSE` is the narrowed form: the free/redistributable license groups
+plus the exact proprietary licenses the installed apps need — `BUSL-1.1`
+(Terraform), `Microsoft-vscode`, `all-rights-reserved` (Slack, Zoom), and
+`google-chrome`. This replaced a blanket `"*"`.
 
 ## Notable package.use
 
@@ -191,19 +196,42 @@ Passwordless sudo for `%wheel` (`/etc/sudoers`).
 
 ## Best-practice notes
 
-See the discussion in the pull request / repo issues. Open items worth
-revisiting on the next rebuild:
+**Applied** (already changed on this machine):
 
-1. **`ACCEPT_KEYWORDS="~amd64"` globally** — full testing branch system-wide is
-   higher-maintenance than stable + per-package `~amd64`.
-2. **`ACCEPT_LICENSE="*"`** — accepts every license incl. non-free; Gentoo's
-   default is `@FREE`. Consider narrowing to `@FREE @BINARY-REDISTRIBUTABLE`
-   plus explicit per-package grants.
-3. **`>app-arch/zstd-1.5.5` mask** — almost certainly stale; verify it's still
-   needed or drop it.
-4. **Unencrypted kernel + initramfs on the EFI partition** — fine for most
-   threat models, but Secure Boot + a signed Unified Kernel Image (UKI) would
-   close the evil-maid gap if desired.
+- ✅ **`ACCEPT_LICENSE`** narrowed from `"*"` to free/redistributable groups +
+  the four proprietary licenses actually in use (see make.conf above).
+- ✅ **Portage tmpfs** capped at **16 GiB** (was 32 GiB, larger than RAM). Builds
+  that need more than 16 GiB of `$PORTAGE_TMPDIR` should fall back to a
+  disk-backed tmpdir via `/etc/portage/env` + `package.env` (the big apps here
+  are `-bin`, so this is rarely hit).
+
+**Open** (worth revisiting on the next rebuild):
+
+- **`ACCEPT_KEYWORDS="~amd64"` globally** — full testing branch system-wide is
+  higher-maintenance than a stable base with per-package `~amd64`. If switching
+  to stable, the only installed packages with **no stable version** (so they
+  *must* be keyworded) are:
+
+  ```
+  # /etc/portage/package.accept_keywords  — required (no stable version exists)
+  net-im/slack          ~amd64
+  net-im/zoom           ~amd64
+  x11-apps/igt-gpu-tools ~amd64
+  ```
+
+  Recommended to *also* keyword (stable lags and these are security/hardware- or
+  fast-moving): `sys-firmware/intel-microcode`, `sys-kernel/linux-firmware`,
+  `sys-firmware/sof-firmware`, `sys-apps/fwupd`, `sys-power/tlp`,
+  `sys-power/thermald`, `app-containers/docker`, `app-containers/docker-compose`,
+  `sys-cluster/kubectl`, `app-admin/terraform`. Everything else installed from
+  testing has a stable version and would simply downgrade.
+
+- **`>app-arch/zstd-1.5.5` mask** — stale: it pins zstd to 1.5.5 while 1.5.7-r1
+  is available. Drop the line and `emerge -1 zstd` unless a specific reason is
+  found.
+- **Unencrypted kernel + initramfs on the EFI partition** — fine for most
+  threat models, but Secure Boot + a signed Unified Kernel Image (UKI) would
+  close the evil-maid gap if desired.
 
 ---
 
