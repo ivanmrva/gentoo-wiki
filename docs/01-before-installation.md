@@ -26,7 +26,8 @@
    * Check for available existing devices/partitions with `fdisk -l`
 1. Encrypt the selected (empty) partition
    * Might be a good idea to perform a check before choosing the right encryption mechanism for the disk: `cryptsetup benchmark`
-   * Encrypt the partition: `cryptsetup -c aes-xts-plain64 -s 512 luksFormat /dev/nvme0n1p3` (modify _-c_ and _-s_ values according to the benchmark if needed)
+   * Encrypt the partition: `cryptsetup --pbkdf pbkdf2 -c aes-xts-plain64 -s 512 luksFormat /dev/nvme0n1p3` (modify _-c_ and _-s_ values according to the benchmark if needed)
+      * **Important:** `--pbkdf pbkdf2` is required because GRUB cannot open a LUKS2 container that uses the modern default `argon2id` KDF. This is the trade-off for keeping `/boot` decryptable by GRUB. (This guide's actual header: LUKS2, `aes-xts-plain64`, 512-bit key, `pbkdf2`/`sha256`.)
    * Provide a passphrase
 1. Verify created partition:
    * `cryptsetup luksDump /dev/nvme0n1p3`
@@ -40,17 +41,19 @@
    * `lvm pvcreate /dev/mapper/lvm`
 1. Create volume group vg0:
    * `vgcreate vg0 /dev/mapper/lvm`
-1. Create logical volume for _/root_ and other logical partitions (i.e. _/data_, etc.):
+1. Create logical volume for _/root_ and other logical partitions (i.e. _/data_, etc.). This guide's current layout is root + swap + five data volumes:
    * `lvcreate -L 100G -n root vg0`
    * `lvcreate -L 32G -n swap vg0`
-      * Recommended size for swap: Nowadays, having systems with plenty of memory, it may be sufficient to create a swap partition smaller than the available memory. When using hibernation, storing a compressed RAM image inside the swap partition, it's a good idea to have a swap partition with the size of the installed memory.
+      * Swap is sized equal to RAM (32 GiB) to support **hibernation** (the compressed RAM image is written to swap). Without hibernation a smaller swap is fine.
    * `lvcreate -L 100G -n data1 vg0`
-   * `lvcreate -l 100%FREE -n data2 vg0` (using rest of free space)
+   * `lvcreate -L 100G -n data2 vg0`
+   * `lvcreate -L 100G -n data3 vg0`
+   * `lvcreate -L 100G -n data4 vg0`
+   * `lvcreate -l 100%FREE -n data5 vg0` (uses the rest of the free space — ~420 GiB here)
    * There is no need to create a boot partition on laptops with Windows, since it already exists (fat32 file system, EFI + GPT partition table)
 1. Create file systems on the previously created partitions
    * `mkfs.ext4 /dev/mapper/vg0-root`
-   * `mkfs.ext4 /dev/mapper/vg0-data1`
-   * `mkfs.ext4 /dev/mapper/vg0-data2`
+   * `for n in 1 2 3 4 5; do mkfs.ext4 /dev/mapper/vg0-data$n; done`
    * `mkswap /dev/mapper/vg0-swap`
 1. Verify LVM setup:
    * `lvdisplay`

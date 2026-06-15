@@ -51,17 +51,19 @@
    * `COMMON_FLAGS="-march=alderlake -O2 -pipe"`
       * Use this script to find out CPU architecture: 
          * `gcc -v -E -x c /dev/null -o /dev/null -march=native 2>&1 | grep /cc1 | grep mtune`
-   * CPU_FLAGS_X86="aes avx avx2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 ssse3"
+   * `CPU_FLAGS_X86="aes avx avx2 avx_vnni bmi1 bmi2 f16c fma3 mmx mmxext pclmul popcnt rdrand sha sse sse2 sse3 sse4_1 sse4_2 ssse3 vpclmulqdq"` (this guide's value, for an Alder Lake i7-1270P)
       * Use `cpuid2cpuflags` command to print out the CPU flags for the current architecture
       * Install it if not present with: `emerge cpuid2cpuflags`
    * `MAKEOPTS="-j16"` (enables parallel compilation)
       * Use the number of CPU threads here that can be checked with the command: `nproc`
       * A good choice is the smaller of: the number of threads the CPU has, or the total amount of system RAM divided by 2 GiB (so, e.g. -j16 requires at least 32 GiB RAM)
 1. Set USE flags in _/etc/portage/make.conf_ - configure reasonable global defaults (adapt the list as you install other packages to your needs):
-   * `USE="-branding -qt5 wayland -X vaapi cryptsetup lvm device-mapper cacert"`
+   * `USE="-branding -qt5 wayland -X vaapi cryptsetup lvm device-mapper cacert dist-kernel screencast gstreamer gles2 vulkan"`
+      * `dist-kernel` keeps the initramfs/bootloader in sync when the distribution kernel updates; `wayland -X` builds for a Wayland GNOME session (with per-package `X` enables where a package still needs it); `screencast gstreamer gles2 vulkan` cover GNOME screen sharing and GPU acceleration.
    * First, check the current USE flag list coming from the selected profile with: `emerge --info | grep ^USE` and adapt the list to your needs with. You might want to check Gnome and Wayland documentation first.
 1. Set VIDEO_CARDS in _/etc/portage/make.conf_ based on your graphic card (check the corresponding Wiki doc):
    * `VIDEO_CARDS="intel"`
+   * Also set `LIBVA_DRIVER_NAME="iHD"` for hardware video acceleration on Gen9+ Intel GPUs (used by `media-libs/libva-intel-media-driver`).
    * Identify your graphic card:
       * `lspci | grep -i VGA`
    * New intel graphic cards require a firmware:
@@ -78,18 +80,24 @@
    * _libunput_ is used by Intel cards and should be portage default, therefore no entry is required.
    * Verify what portage is using: `portageq envvar INPUT_DEVICES`
 1. Set ACCEPT_LICENSE in _/etc/portage/make.conf_:
-   * `ACCEPT_LICENSE="*"` (accepting every license for every package at any version)
+   * `ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE BUSL-1.1 Microsoft-vscode all-rights-reserved google-chrome"`
+   * This accepts free + binary-redistributable licenses, plus the specific proprietary licenses needed by the installed apps (Terraform, VS Code, Slack/Zoom, Chrome). It is deliberately **not** a blanket `"*"`, so any *new* non-free package surfaces its license for an explicit decision. Add tokens as you install more proprietary software.
 1. Set ACCEPT_KEYWORDS in _/etc/portage/make.conf_:
-   * `ACCEPT_KEYWORDS="~amd64"` (allowing testing packages beeing installed, not just stable)
+   * `ACCEPT_KEYWORDS="~amd64"` — this machine **deliberately runs the testing branch globally**, for the latest GNOME and developer tooling.
+   * It's a conscious trade-off (more frequent updates for newest software). The recompile churn is kept manageable **without** going stable — via `-bin` packages for the heavyweights, managing language runtimes outside Portage (e.g. `mise`), `FEATURES="buildpkg"`, and a weekly/biweekly update cadence. See [System Reference → Keyword strategy](08-system-reference.md#keyword-strategy-decided-stay-on-testing).
+   * A stable base with per-package `~amd64` is the lower-churn alternative if you don't need latest-everything.
 1. Set LINGUAS in _/etc/portage/make.conf_:
    * `LINGUAS=""` (setting to empty value, which is different than unset means only installing a default language for each package)
 1. Save/preserve portage elogs:
    * `PORTAGE_ELOG_CLASSES="warn error info log qa"` (logs everything)
    * `PORTAGE_ELOG_SYSTEM="echo save"` (show messages after emerging and save them too)
 1. Set EMERGE_DEFAULT_OPTS in _/etc/portage/make.conf_:
-   * `EMERGE_DEFAULT_OPTS="--ask --verbose --deep --with-bdeps=y --tree --jobs 16 --load-average 14.4"`
-      * A typical value for _--jobs_ would be equal to the number of processor cores but not more processes than RAM/2GB
+   * `EMERGE_DEFAULT_OPTS="--ask --verbose --deep --with-bdeps=y --tree --jobs 4 --load-average 14.4"`
+      * `--jobs` is how many packages emerge builds **in parallel**, multiplied by `MAKEOPTS="-j16"` inside each — so keep `--jobs` modest (here `4`) to avoid 4×16 = 64 concurrent compiles exhausting RAM. `--load-average` caps total load regardless.
       * A rule of thumb for _--load-average_ is to set X.Y=N*0.9 which will limit the load to 90%, thus maintaining system  responsiveness, where N is the number of processor cores
+1. Restrict Intel microcode to this CPU and enable binary package caching:
+   * `MICROCODE_SIGNATURES="-s 0x000906a3"` (trims `intel-microcode` to this CPU's signature; find yours via `iucode_tool -S` or `grep microcode /proc/cpuinfo`)
+   * `FEATURES="buildpkg"` (saves a binary package of everything built, so rebuilds/reinstalls are fast)
 
 # Configure Kernel
 
@@ -135,16 +143,27 @@
    * Generate initrams
       * `emerge genkernel`
       * `genkernel --luks --lvm initramfs` (required parameters for an encrypted root fs)
-1. Option 2 (preffered): Gentoo disk kernel installation:
-   * Customize kernel config file via custom snippets:
-      * Create a file per one snippet, e.g. `/etc/kernel/config.d/10-firmware.config` with the following content (diff to default config of dist kernel):
+1. Option 2 (preferred, and what this guide uses): Distribution kernel with dracut:
+   * Set up `installkernel` to drive GRUB + dracut. In `/etc/portage/package.use`:
+      * `sys-kernel/installkernel grub dracut`
+   * Configure dracut for the encrypted LVM root in `/etc/dracut.conf.d/10-local.conf`:
+      * ```
+        hostonly="yes"
+        hostonly_cmdline="no"
+        add_dracutmodules+=" crypt dm lvm resume "
+        force_drivers+=" nvme "
+        ```
+      * `crypt dm lvm` pull in LUKS/LVM unlocking; `resume` enables hibernation from swap; `force_drivers+=" nvme "` guarantees the NVMe driver is in the initramfs.
+   * Customize the kernel config via drop-in snippets in `/etc/kernel/config.d/` (each file is a diff against the dist-kernel default config):
+      * `10-firmware.config` — build Intel microcode into the image:
         * ```
           CONFIG_EXTRA_FIRMWARE="intel-ucode/06-9a-03"
           CONFIG_EXTRA_FIRMWARE_DIR="/lib/firmware"
           ```
-   * Compile and install kernel (automatically installs kernel under /boot folder including initrams):
+      * Optional local tuning (e.g. `90-<hostname>.config`) — `CONFIG_X86_NATIVE_CPU`, `NR_CPUS=16`, zstd image/module compression, `ZSWAP_DEFAULT_ON`, BBR+fq networking, RCU lazy/nocb for battery. See [System Reference](08-system-reference.md#kernel) for the full snippet.
+   * Compile and install the kernel — `installkernel` builds the initramfs with dracut and installs both under `/boot`, then runs `grub-mkconfig` automatically:
       * `emerge gentoo-kernel`
-   * Regenerate GRUB configuration (see steps below as well):
+   * If you need to regenerate GRUB config manually:
       * `grub-mkconfig -o /boot/grub/grub.cfg`
 
 # Configure FSTAB
@@ -159,9 +178,10 @@
      UUID=9adc7927-7432-47b6-b9cb-9a87b757784d  /data3			ext4	defaults,noatime	0 2
      UUID=a8b47f07-4b28-499f-aea0-47e168920f7a	/data4			ext4	defaults,noatime	0 2
      UUID=d470ac2b-8f98-4898-977e-525e56dfaff7	/data5			ext4	defaults,noatime	0 2
-     tmpfs	/var/tmp/portage	tmpfs	size=32G,uid=portage,gid=portage,mode=775,nosuid,noatime,nodev	0 0
+     tmpfs	/var/tmp/portage	tmpfs	size=16G,uid=portage,gid=portage,mode=775,nosuid,noatime,nodev	0 0
      ```
       * get UUIDs with `blkid`
+      * The `tmpfs` line builds packages in RAM for speed. Keep `size` **below** total RAM (16 GiB here, on a 32 GiB machine) so a large build can't exhaust memory. Packages that need a bigger build dir than this should be redirected to a disk-backed `PORTAGE_TMPDIR` via `/etc/portage/env`.
 
 # Configure Systemd
 
@@ -171,27 +191,33 @@
    * `systemctl preset-all`
    * `hostnamectl set-hostname <hostname>` (this guide's example: `ivmr-laptop`)
    * `localectl set-keymap us`
-   * `localectl set-x11-keymap us`
-   * `localectl set-locale LANG=en_US.utf8`
+   * `localectl set-locale LANG=C.UTF8 LC_TIME=en_GB.UTF-8 LC_PAPER=en_GB.UTF-8 LC_MEASUREMENT=en_GB.UTF-8 LC_MONETARY=en_GB.UTF-8 LC_NUMERIC=en_GB.UTF-8`
+      * This guide uses a C/UTF-8 base locale with `en_GB` formats (24h clock, metric, ISO dates). Make sure the chosen locales are uncommented in `/etc/locale.gen`, then run `locale-gen`.
    * `timedatectl set-timezone Europe/Zurich`
-1. Enable additional needed services:
-   * `systemctl enable lvm2-monitor.service`
-   * `systemctl enable sshd`
+1. Networking is managed by **NetworkManager** (with `systemd-resolved` for DNS). Install and enable it:
+   * `emerge net-misc/networkmanager`
+   * `systemctl enable NetworkManager.service`
+   * `systemctl enable systemd-resolved.service`
+1. Enable additional core services:
+   * `systemctl enable lvm2-monitor.service` (LVM monitoring)
    * `systemctl enable systemd-timesyncd.service` (time synchronization)
+   * (Further desktop/power/hardware services — `gdm`, `bluetooth`, `thermald`, `tlp`, `earlyoom`, `smartd`, `lm_sensors`, `docker`, `nftables` — are enabled in [After Installation](03-after-installation.md) as their packages are installed.)
 
-Note: _/etc/crypttab_ configuration is not required.
+Note: _/etc/crypttab_ configuration is not required — dracut unlocks LUKS from the kernel command line (`rd.luks.uuid=`).
 
 # Configure Bootloader
 
 1. Install grub package:
    * `emerge sys-boot/grub`
       * Make sure _GRUB_PLATFORMS="efi-64"_ is enabled. If not execute: `echo 'GRUB_PLATFORMS="efi-64"' >> /etc/portage/make.conf`
-1. Install grub to boot partition:
+1. Install grub to the EFI partition:
    * `grub-install --efi-directory=/boot`
-   * Do not install it to _/efi_ partition (as recommended in Gentoo handbook). This will cause further problems, because Linux kernel is still located under /boot (part of the encrypted disk, e.g. /root partition), so Grub would need to deal first with decrypting the root partition. Moreover, Grub2 doesn't support LUKS2 + argon2id encryption yet.
-1. Update the GRUB configuration:
-   * Allow booting on an encrypted LUKS + LVM drive by adding `GRUB_CMDLINE_LINUX="dolvm crypt_root=UUID=208eea62-0c82-4dee-8622-72b03c0ac198 crypt_swap=UUID=... root=/dev/mapper/vg0-root init=/lib/systemd/systemd` in _/etc/default/grub_.
-      * Get partition UUIDs with `blkid`
+   * In this layout `/boot` **is** the unencrypted EFI System Partition, and it holds the kernel + initramfs. GRUB loads them directly — it does **not** need to decrypt anything. The dracut-generated initramfs then unlocks the LUKS container at boot. (Because GRUB never touches the encrypted volume here, the earlier LUKS2/argon2id GRUB limitation is irrelevant for `/boot` itself — but it is still why the root container uses `pbkdf2`; see [Disk Preparation](01-before-installation.md#encrypt-a-partition-for-target-os).)
+1. Update the GRUB configuration in _/etc/default/grub_ with a **dracut-style** kernel command line:
+   * `GRUB_CMDLINE_LINUX="dolvm rd.luks.options=discard rd.luks.uuid=<luks-container-uuid> root=/dev/mapper/vg0-root init=/usr/lib/systemd/systemd resume=UUID=<swap-uuid> acpi_backlight=native i915.enable_dpcd_backlight=1"`
+      * `rd.luks.uuid=` tells dracut which LUKS container to unlock (use the UUID of the **encrypted partition itself**, e.g. `nvme0n1p3`); `resume=UUID=` points at the swap volume for hibernation; the two backlight params fix display brightness control on this HP/Intel laptop.
+      * Get all UUIDs with `blkid`. (Note the older `crypt_root=`/`crypt_swap=` form is for genkernel initramfs — this guide uses dracut, so use `rd.luks.*`.)
+   * Also set `GRUB_TIMEOUT=2` and `GRUB_DISTRIBUTOR="Gentoo"` as desired.
 1. Generate the GRUB configuration:
    * `grub-mkconfig -o /boot/grub/grub.cfg`
       * This is correct, don't point to to _/boot/EFI/gentoo/_.

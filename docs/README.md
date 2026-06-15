@@ -28,6 +28,11 @@ The fstab and GRUB samples keep the author's real UUIDs as a realistic example �
 
 ## Contents
 
+**Start here:** [Recreating this system — step by step](00-recreate-this-system.md)
+is the ordered runbook, with two paths: a fresh install from scratch, or
+migrating an existing Gentoo onto this configuration. The pages below are the
+detailed reference it links into.
+
 The guide follows the installation flow top to bottom:
 
 1. [Before Installation](01-before-installation.md) — bootable USB, disk
@@ -43,6 +48,10 @@ The guide follows the installation flow top to bottom:
 
 ### Reference
 
+- **[System Reference](08-system-reference.md)** — a full snapshot of the actual
+  running machine (hardware, verbatim `make.conf`, kernel tuning, partition
+  layout, enabled services, and the complete installed-package list) so it can
+  be recreated exactly.
 - [Access System from a Live USB](06-access-system-from-live-usb.md) — unlock
   an encrypted disk and chroot in for recovery.
 - [Various Tasks](07-various-tasks.md) — fonts, BIOS updates, and other
