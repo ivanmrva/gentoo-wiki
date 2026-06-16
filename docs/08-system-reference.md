@@ -146,14 +146,18 @@ force_drivers+=" nvme "
 
 **System** (`systemctl`): `NetworkManager`, `systemd-resolved`,
 `systemd-timesyncd`, `lvm2-monitor`, `gdm`, `bluetooth`, `docker`, `thermald`,
-`tlp`, `earlyoom`, `smartd`, `lm_sensors`, `nftables`, `fstrim.timer`.
+`tlp`, `earlyoom`, `smartd`, `lm_sensors`, `nftables`, `fstrim.timer`,
+`system-changes` (config tracking — see
+[Application Configuration](04-application-configuration.md#config-tracking-changes-only-git-mirror)).
 
 **User** (`systemctl --user`): `wireplumber`, `pipewire`/`pipewire-pulse`
 sockets. (Audio is **PipeWire**, not PulseAudio.)
 
-> Personal automation — cloud-storage mounts (`rclone`), scheduled backups
-> (`restic`), and a personal helper service — is enabled but intentionally not
-> documented here.
+> Personal automation — cloud-storage mounts (`rclone`) and scheduled backups
+> (`restic`) — is enabled but intentionally not documented here. The
+> **`system-changes`** config-tracking service *is* documented, generically, in
+> [Application Configuration](04-application-configuration.md#config-tracking-changes-only-git-mirror)
+> (the private repo URL is withheld).
 
 ## Locale & time
 

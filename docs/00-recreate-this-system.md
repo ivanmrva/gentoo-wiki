@@ -99,7 +99,8 @@ with **dracut** (which unlocks LUKS at boot), and wire up GRUB — all automatic
    power management (thermald + TLP), and the rest of the services.
 3. [Application Configuration](04-application-configuration.md): install your
    app set (see the full [@world list](08-system-reference.md#installed-applications-the-world-set))
-   and configure Docker, printing, backups, etc.
+   and configure Docker, printing, backups, and the
+   [config-tracking service](04-application-configuration.md#config-tracking-changes-only-git-mirror).
 4. Optional: rebuild everything against the final flags — `emerge -e @world`,
    then `emerge --depclean`.
 
