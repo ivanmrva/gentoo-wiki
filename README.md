@@ -13,7 +13,8 @@ platform.
 4. [Application Configuration](docs/04-application-configuration.md)
 5. [Troubleshooting](docs/05-troubleshooting.md)
 
-Reference: [Access System from a Live USB](docs/06-access-system-from-live-usb.md) ·
+Reference: [Backup, clone & restore](docs/09-backup-restore.md) ·
+[Access System from a Live USB](docs/06-access-system-from-live-usb.md) ·
 [Various Tasks](docs/07-various-tasks.md)
 
 > Adapt device names, UUIDs, and hardware-specific flags to your own machine.

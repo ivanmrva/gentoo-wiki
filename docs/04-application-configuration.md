@@ -28,9 +28,9 @@ The notable per-app configuration steps are below.
 
 # Backups
 
-* `restic` (snapshots) and `rdiff-backup`, plus `rclone` for cloud storage,
-  are installed and driven by personal systemd timers (not documented here —
-  recreate privately).
+* `restic` (snapshots) and `rdiff-backup`, plus `rclone` for cloud storage, are
+  installed and driven by systemd timers. The full architecture and the
+  restore/clone procedures are in **[Backup, clone & restore](09-backup-restore.md)**.
 
 # Config tracking (changes-only git mirror)
 

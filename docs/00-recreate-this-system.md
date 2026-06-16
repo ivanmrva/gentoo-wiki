@@ -13,6 +13,9 @@ There are two ways to get here:
 - **[Path B — Migrate an existing Gentoo](#path-b--migrate-an-existing-gentoo)**
   to converge it onto this configuration.
 
+> Recovering a dead/lost machine from an existing backup instead of rebuilding
+> from scratch? See **[Backup, clone & restore → Total loss](09-backup-restore.md#c-total-loss--clone-onto-new-hardware)**.
+
 > Before anything, read the [Conventions](README.md#conventions): commands use
 > `<placeholders>` (username, hostname, partitions, UUIDs) — substitute your
 > own. The full target state is captured in the

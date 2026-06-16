@@ -52,6 +52,9 @@ The guide follows the installation flow top to bottom:
   running machine (hardware, verbatim `make.conf`, kernel tuning, partition
   layout, enabled services, and the complete installed-package list) so it can
   be recreated exactly.
+- **[Backup, clone & restore](09-backup-restore.md)** — the four-layer backup
+  architecture (restic system backup, rclone data sync, config versioning,
+  bootstrap secrets) and step-by-step restore/clone procedures.
 - [Access System from a Live USB](06-access-system-from-live-usb.md) — unlock
   an encrypted disk and chroot in for recovery.
 - [Various Tasks](07-various-tasks.md) — fonts, BIOS updates, and other
