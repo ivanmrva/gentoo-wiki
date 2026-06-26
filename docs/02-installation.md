@@ -26,7 +26,7 @@
    * `mount --bind /run /mnt/gentoo/run`
    * `mount --make-slave /mnt/gentoo/run`
       * or as one command:
-         * `sudo mount --types proc /proc /mnt/gentoo/proc && sudo mount --rbind /sys /mnt/gentoo/sys && sudo mount --make-rslave /mnt/gentoo/sys && sudo mount --rbind /dev /mnt/gentoo/dev && sudo sudo mount --make-rslave /mnt/gentoo/dev && sudo mount --bind /run /mnt/gentoo/run && sudo mount --make-slave /mnt/gentoo/run`
+         * `sudo mount --types proc /proc /mnt/gentoo/proc && sudo mount --rbind /sys /mnt/gentoo/sys && sudo mount --make-rslave /mnt/gentoo/sys && sudo mount --rbind /dev /mnt/gentoo/dev && sudo mount --make-rslave /mnt/gentoo/dev && sudo mount --bind /run /mnt/gentoo/run && sudo mount --make-slave /mnt/gentoo/run`
    * If your distribution (Ubuntu Live USB) has _/dev/shm_ being a symbolic link to _/run/shm/_, you need to also execute:
       * `test -L /dev/shm && rm /dev/shm && mkdir /dev/shm`
       * `mount --types tmpfs --options nosuid,nodev,noexec shm /dev/shm`
@@ -71,10 +71,11 @@
       * A corresponding firmware binary needs to be afterwards build into a kernel binary (check the Kernel guide).
    * Enable Vaapi via global use flag and install
       * `emerge media-libs/libva-intel-media-driver`
-   * Verify once all installed if hardware encoding/decoding is used with:
-     * `emerge x11-apps/igt-gpu-tools`
-     * `intel_gpu_top`
-        * Video BUSY on 0% means that hardware decoding/encoding is not used.
+   * Verify the driver loads with `vainfo` (from `media-video/libva-utils`, already
+     installed for VAAPI) — no extra package needed.
+     * Optional live engine view: `emerge x11-apps/igt-gpu-tools` then `intel_gpu_top`
+       (Video BUSY > 0% under playback confirms HW decode). This machine does **not**
+       keep igt-gpu-tools installed — install it on demand if you want that view.
 1. Set INPUT_DEVICES in _/etc/portage/make.conf_ based on your graphic card (check the X wiki):
    * `INPUT_DEVICES="libinput"`
    * _libunput_ is used by Intel cards and should be portage default, therefore no entry is required.
@@ -84,7 +85,7 @@
    * This accepts free + binary-redistributable licenses, plus the specific proprietary licenses needed by the installed apps (Terraform, VS Code, Slack/Zoom, Chrome). It is deliberately **not** a blanket `"*"`, so any *new* non-free package surfaces its license for an explicit decision. Add tokens as you install more proprietary software.
 1. Set ACCEPT_KEYWORDS in _/etc/portage/make.conf_:
    * `ACCEPT_KEYWORDS="~amd64"` — this machine **deliberately runs the testing branch globally**, for the latest GNOME and developer tooling.
-   * It's a conscious trade-off (more frequent updates for newest software). The recompile churn is kept manageable **without** going stable — via `-bin` packages for the heavyweights, managing language runtimes outside Portage (e.g. `mise`), `FEATURES="buildpkg"`, and a weekly/biweekly update cadence. See [System Reference → Keyword strategy](08-system-reference.md#keyword-strategy-decided-stay-on-testing).
+   * It's a conscious trade-off (more frequent updates for newest software). The recompile churn is kept manageable **without** going stable — via `-bin` packages for the heavyweights, managing language runtimes outside Portage (e.g. `mise`), `FEATURES="buildpkg ccache"`, and a weekly/biweekly update cadence. See [System Reference → Keyword strategy](08-system-reference.md#keyword-strategy-decided-stay-on-testing).
    * A stable base with per-package `~amd64` is the lower-churn alternative if you don't need latest-everything.
 1. Set LINGUAS in _/etc/portage/make.conf_:
    * `LINGUAS=""` (setting to empty value, which is different than unset means only installing a default language for each package)
@@ -92,12 +93,19 @@
    * `PORTAGE_ELOG_CLASSES="warn error info log qa"` (logs everything)
    * `PORTAGE_ELOG_SYSTEM="echo save"` (show messages after emerging and save them too)
 1. Set EMERGE_DEFAULT_OPTS in _/etc/portage/make.conf_:
-   * `EMERGE_DEFAULT_OPTS="--ask --verbose --deep --with-bdeps=y --tree --jobs 4 --load-average 14.4"`
-      * `--jobs` is how many packages emerge builds **in parallel**, multiplied by `MAKEOPTS="-j16"` inside each — so keep `--jobs` modest (here `4`) to avoid 4×16 = 64 concurrent compiles exhausting RAM. `--load-average` caps total load regardless.
+   * `EMERGE_DEFAULT_OPTS="--ask --verbose --deep --with-bdeps=y --tree --keep-going --changed-use --jobs 2 --load-average 14.4"`
+      * `--jobs` is how many packages emerge builds **in parallel**, multiplied by `MAKEOPTS="-j16"` inside each — so keep `--jobs` modest (here `2`) to avoid `--jobs`×16 concurrent compiles exhausting RAM. `--load-average` caps total load regardless.
+      * `--keep-going` lets a large `@world` run skip a failed package and finish the rest (rather than aborting the whole set), and `--changed-use` rebuilds packages whose effective USE flags changed even when the version didn't — both matter on a `~amd64` box with frequent updates.
       * A rule of thumb for _--load-average_ is to set X.Y=N*0.9 which will limit the load to 90%, thus maintaining system  responsiveness, where N is the number of processor cores
 1. Restrict Intel microcode to this CPU and enable binary package caching:
    * `MICROCODE_SIGNATURES="-s 0x000906a3"` (trims `intel-microcode` to this CPU's signature; find yours via `iucode_tool -S` or `grep microcode /proc/cpuinfo`)
-   * `FEATURES="buildpkg"` (saves a binary package of everything built, so rebuilds/reinstalls are fast)
+   * `FEATURES="buildpkg ccache"`
+      * `buildpkg` saves a binary package of everything built (to `/var/cache/binpkgs`), so rebuilds/reinstalls are fast. This is the **active** local binpkg mechanism — the stock `binrepos.conf` binhost stub is inert (`getbinpkg` is not enabled and `PORTAGE_BINHOST` is empty).
+      * `ccache` caches object files so recompiles after USE-flag or toolchain changes are much faster. It needs `dev-util/ccache` installed; compiler shims live in `/usr/lib/ccache/bin`.
+1. Configure ccache, build niceness, and the install mask in _/etc/portage/make.conf_:
+   * `CCACHE_DIR="/var/cache/ccache"` and `CCACHE_SIZE="20G"` — a shared, group-writable cache capped at 20 GiB (Portage also writes `/var/cache/ccache/ccache.conf` with `max_size = 20G`). Note that running `ccache -p`/`ccache -s` as a normal user shows the *unprivileged* default (`~/.cache/ccache`, 5 GiB) — that is **not** what Portage uses.
+   * `PORTAGE_NICENESS=15` — nices builds so the desktop stays responsive while compiling.
+   * `INSTALL_MASK="/usr/share/gtk-doc /usr/share/doc/*/html"` — skips bulky API HTML docs (man pages and licenses are kept).
 
 # Configure Kernel
 
@@ -128,7 +136,7 @@
       * Copy .config file from previous system or Ubuntu live (found under _/boot/_ directory or use _zcat /proc/config.gz_):
          * `cp /usr/src/linux/.config /mnt/gentoo/usr/src/linux/.config`
       * Or create a new config from:
-         * `make deconfig` (creates a default config for the given architecture, requires a lot of configuration afterwards)
+         * `make defconfig` (creates a default config for the given architecture, requires a lot of configuration afterwards)
          * `make allmodconfig` (creates a config with all modules enabled, should work always theoretically, but in practice, it probably won't)    
       * Afterwards execute one of (choose as you like):
          * `make olddefconfig` (takes the existing config file as its and applies default values for new entries)
@@ -161,6 +169,7 @@
           CONFIG_EXTRA_FIRMWARE_DIR="/lib/firmware"
           ```
       * Optional local tuning (e.g. `90-<hostname>.config`) — `CONFIG_X86_NATIVE_CPU`, `NR_CPUS=16`, zstd image/module compression, `ZSWAP_DEFAULT_ON`, BBR+fq networking, RCU lazy/nocb for battery. See [System Reference](08-system-reference.md#kernel) for the full snippet.
+        * To make `NR_CPUS=16` actually take effect you must **also** disable MAXSMP in the same snippet (`# CONFIG_MAXSMP is not set`); the dist-kernel sets `CONFIG_MAXSMP=y`, which force-locks `NR_CPUS=8192` and silently overrides your value.
    * Compile and install the kernel — `installkernel` builds the initramfs with dracut and installs both under `/boot`, then runs `grub-mkconfig` automatically:
       * `emerge gentoo-kernel`
    * If you need to regenerate GRUB config manually:
@@ -169,19 +178,30 @@
 # Configure FSTAB
 
 1. Edit _etc/fstab_ with:
-   * ```  
-     UUID=8330-6874				/boot			vfat	umask=0077		0 2
+   * ```
+     UUID=E782-4A0E					/boot			vfat	umask=0077		0 2
      UUID=501eeb58-907b-405a-91af-77f523c8d92e	none			swap	sw			0 0
      UUID=4384aae9-0956-4c11-a39d-374506d3e09c	/			ext4	defaults,noatime	0 1
-     UUID=4eadf208-d701-489c-bf9f-74e90cba9df6	/data1			ext4	defaults,noatime	0 2
-     UUID=65cf6a54-d5d7-4a8d-a6eb-e63ae39a15b5	/data2			ext4	defaults,noatime	0 2
-     UUID=9adc7927-7432-47b6-b9cb-9a87b757784d  /data3			ext4	defaults,noatime	0 2
-     UUID=a8b47f07-4b28-499f-aea0-47e168920f7a	/data4			ext4	defaults,noatime	0 2
-     UUID=d470ac2b-8f98-4898-977e-525e56dfaff7	/data5			ext4	defaults,noatime	0 2
-     tmpfs	/var/tmp/portage	tmpfs	size=16G,uid=portage,gid=portage,mode=775,nosuid,noatime,nodev	0 0
+     tmpfs	/var/tmp/portage	tmpfs	size=20G,uid=portage,gid=portage,mode=775,nosuid,noatime,nodev	0 0
+
+     # btrfs pool on vg0-btrfs (UUID 048292a5-…) — Stage 1 migration 2026-06-20
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data1			btrfs	noatime,compress=zstd:3,subvol=@data1			0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data1/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data1_snapshots		0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data2			btrfs	noatime,compress=zstd:3,subvol=@data2			0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data2/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data2_snapshots		0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data3			btrfs	noatime,compress=zstd:3,subvol=@data3			0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data3/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data3_snapshots		0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data4			btrfs	noatime,compress=zstd:3,subvol=@data4			0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data4/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data4_snapshots		0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data5			btrfs	noatime,subvol=@data5					0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/data5/.snapshots	btrfs	noatime,subvol=@data5_snapshots				0 0
+     UUID=048292a5-5607-449a-9247-92aad183be1f	/var/tmp/portage-big	btrfs	noatime,nodatacow,subvol=@portage_build			0 0
      ```
       * get UUIDs with `blkid`
-      * The `tmpfs` line builds packages in RAM for speed. Keep `size` **below** total RAM (16 GiB here, on a 32 GiB machine) so a large build can't exhaust memory. Packages that need a bigger build dir than this should be redirected to a disk-backed `PORTAGE_TMPDIR` via `/etc/portage/env`.
+      * `data1`–`data5` are **not separate ext4 LVs** anymore — they are Btrfs subvolumes (`@data1`…`@data5`) sharing a single large LV (`vg0-btrfs`, label `pool`), with a sibling `@dataN_snapshots` subvolume per area for snapper. This replaced the old five-ext4-LV layout in the 2026-06-20 migration (the pre-migration fstab is preserved, e.g. `/var/lib/system-changes/etc/fstab.pre-btrfs.*`). Btrfs tooling and the snapshot/swap layers (`sys-fs/btrfs-progs`, `app-backup/snapper` on `data1`, and `sys-apps/zram-generator` for compressed RAM swap) are installed in the [recreate runbook](00-recreate-this-system.md), with the verbatim config recorded in the [System Reference → Disk layout](08-system-reference.md#disk-layout).
+      * `compress=zstd:3` is set on `data1`–`data4` (and their `.snapshots`). `data5` deliberately omits `compress=` in fstab (for already-compressed/incompressible data); the kernel still reports `compress=zstd:3` there only because the fs-wide mount established it. The kernel also applies `ssd,discard=async,space_cache=v2` automatically — those are **not** written in fstab.
+      * The `tmpfs` line builds packages in RAM for speed. Keep `size` **below** total RAM (20 GiB here, on a 32 GiB machine) so a large build can't exhaust memory.
+      * `/var/tmp/portage-big` is a disk-backed Btrfs subvolume (`@portage_build`, mounted `nodatacow` to avoid CoW churn during builds). Packages whose build dir exceeds the tmpfs are routed here by setting `PORTAGE_TMPDIR=/var/tmp/portage-big` in `/etc/portage/env/bigbuild.conf` and listing them in `/etc/portage/package.env` (webkit-gtk, llvm, clang, gcc, nodejs, plus forward-looking qtwebengine/chromium/rust/libreoffice).
 
 # Configure Systemd
 
@@ -217,18 +237,30 @@ Note: _/etc/crypttab_ configuration is not required — dracut unlocks LUKS from
    * `GRUB_CMDLINE_LINUX="dolvm rd.luks.options=discard rd.luks.uuid=<luks-container-uuid> root=/dev/mapper/vg0-root init=/usr/lib/systemd/systemd resume=UUID=<swap-uuid> acpi_backlight=native i915.enable_dpcd_backlight=1"`
       * `rd.luks.uuid=` tells dracut which LUKS container to unlock (use the UUID of the **encrypted partition itself**, e.g. `nvme0n1p3`); `resume=UUID=` points at the swap volume for hibernation; the two backlight params fix display brightness control on this HP/Intel laptop.
       * Get all UUIDs with `blkid`. (Note the older `crypt_root=`/`crypt_swap=` form is for genkernel initramfs — this guide uses dracut, so use `rd.luks.*`.)
+      * **Do not** add `mem_sleep_default=deep` here. An earlier iteration of this cmdline carried it, but it was deliberately dropped (2026-06-16) when switching to **suspend-then-hibernate** (s2idle first, RTC-wake to hibernate later — see `/etc/systemd/sleep.conf.d/10-hibernate.conf`); forcing `deep` (S3) is incompatible with that flow. A `/etc/default/grub.bak-presuspend` backup preserves the old line.
    * Also set `GRUB_TIMEOUT=2` and `GRUB_DISTRIBUTOR="Gentoo"` as desired.
 1. Generate the GRUB configuration:
    * `grub-mkconfig -o /boot/grub/grub.cfg`
       * This is correct, don't point to to _/boot/EFI/gentoo/_.
+
+### Planned improvement: signed UKI + Secure Boot (drop GRUB)
+
+The current boot chain has one structural weakness: GRUB loads an **unsigned** kernel + dracut initramfs from the **unencrypted** ESP, and there is no Secure Boot. Anyone with brief physical access could tamper with those boot artifacts (an "evil-maid" attack) and the machine would boot the modified image without complaint. This is also *why* the root LUKS2 container uses `pbkdf2` rather than the stronger `argon2id` — GRUB can only open a `pbkdf2` header (see [Before Installation → Encrypt](01-before-installation.md#encrypt-a-partition-for-target-os)).
+
+> **Now:** GRUB on the unencrypted ESP loads an unsigned `gentoo-kernel` + dracut initramfs; the initramfs then unlocks the `pbkdf2` LUKS2 container from `rd.luks.uuid=`. No Secure Boot. The `generic-uki` and `secureboot` dist-kernel USE flags are **OFF**.
+>
+> **Next iteration:** build a **signed Unified Kernel Image** (kernel + initramfs + cmdline in one PE binary on the ESP) instead of separate files under GRUB — either via `sys-kernel/installkernel` configured for a UKI/secureboot setup, or by enabling the dist-kernel `generic-uki` + `secureboot` USE flags on `sys-kernel/gentoo-kernel`. Enroll your own Secure Boot keys (MOK/db), sign the UKI, and turn Secure Boot **on** in firmware. Optionally add TPM2 auto-unlock via `systemd-cryptenroll --tpm2-device=auto` so the disk opens automatically when the boot chain is unmodified — but keep the **passphrase mandatory** and enroll a **mandatory recovery key** as well, so a firmware update or TPM PCR change can never lock you out. With GRUB gone, the `pbkdf2` constraint disappears too, so the LUKS header can be re-keyed to **`argon2id`** (`cryptsetup luksConvertKey --pbkdf argon2id`).
+>
+> **Why:** closes the unsigned-boot / evil-maid gap — Secure Boot refuses to run a tampered image, and TPM2 will only release the unlock secret if the measured boot chain is unchanged. The passphrase + recovery key stay mandatory so TPM2 is a *convenience*, never a single point of failure. The target shape is: FAT32 ESP holding only a **signed UKI** (no separate `/boot`), LUKS2 (`argon2id`) over LVM over Btrfs, Secure Boot enabled.
 
 # User configuration
 
 1. Set root user password:
    * `passwd`
 1. Add personal user (this guide's example user is `ivmr`):
-   * `useradd -m -G users,wheel,audio,video,usb,systemd-journal -s /bin/bash <user>`
+   * `useradd -m -G users,wheel,audio,video,usb,systemd-journal,plugdev,docker,mail -s /bin/bash <user>`
    * `passwd <user>`
+   * `plugdev`, `docker`, and `mail` line up with packages installed later — `plugdev` for removable-device access (also added by the GNOME step below), `docker` for rootless/socket access to the Docker daemon, and `mail` for the local mail path (msmtp/sendmail). Add them now or `gpasswd -a <user> <group>` once those packages exist.
 
 # Reemerge @world
 
