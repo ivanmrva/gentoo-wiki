@@ -62,25 +62,27 @@ group.
 
 1. Create the bootable USB and boot it.
 2. Create the LUKS2 container — **use `--pbkdf pbkdf2`** so GRUB can open it.
-3. Inside it, create the `vg0` volume group and **three** logical volumes:
-   `root` (100G, ext4), `swap` (32G, = RAM, for hibernation), and one big
-   `btrfs` LV (`~820G`, `lvcreate -l 100%FREE`). The old "one ext4 LV per data
-   area" layout is gone — `data1`–`data5` now live as Btrfs subvolumes inside
-   that single LV (migrated 2026-06-20).
-4. `mkfs.ext4` the root LV, `mkswap` the swap LV, `mkfs.btrfs` the big LV
-   (label `pool`). Mount the pool once and create the subvolumes: `@data1`…
-   `@data5`, `@data1_snapshots`…`@data5_snapshots`, and `@portage_build`
-   (the on-disk overflow build dir). See the
-   [Disk layout](08-system-reference.md#disk-layout) for the exact subvolume
-   table and sizes.
+3. Inside it, create the `vg0` volume group and just **two** logical volumes:
+   `swap` (32G, = RAM, for hibernation) and one big `btrfs` LV (`~920G`,
+   `lvcreate -l 100%FREE`). There is **no separate root LV** — root lives in the
+   Btrfs pool as the `@` subvolume, so the whole system *and* all data share one
+   pool and `/` gains snapshots.
+4. `mkswap` the swap LV, `mkfs.btrfs -L pool` the big LV, then mount the pool once
+   and create every subvolume: `@` (root) + `@home` + `@snapshots` +
+   `@home_snapshots`; `@var_log` / `@var_cache` / `@var_tmp` (split out of the
+   root snapshot); `@data1`…`@data5` + `@data1_snapshots`…`@data5_snapshots`; and
+   `@portage_build` (on-disk overflow build dir). `/opt` and `/usr/local` stay
+   inside `@`. See [Disk layout](08-system-reference.md#disk-layout) for the exact
+   subvolume table and the reasoning behind each split.
 
 ### 2. Unpack stage3 and chroot → [02 · Stage3 / Chrooting](02-installation.md#stage3-installation)
 
 What this means: you drop the base Gentoo system onto the new root and enter it
 as if it were already booted.
 
-1. Mount `vg0-root` at `/mnt/gentoo`, download + verify + unpack the
-   **amd64 desktop systemd** stage3.
+1. Mount the `@` (root) subvolume — `mount -o subvol=@ /dev/mapper/vg0-btrfs
+   /mnt/gentoo` — then download + verify + unpack the **amd64 desktop systemd**
+   stage3.
 2. Bind-mount `/proc /sys /dev /run`, copy `resolv.conf`, `chroot` in, mount the
    EFI partition at `/boot`.
 
@@ -136,14 +138,16 @@ with **dracut** (which unlocks LUKS at boot), and wire up GRUB — all automatic
 
 ### 5. Finish the base system → [02](02-installation.md#configure-fstab)
 
-1. **fstab** — everything by UUID (`blkid`): the EFI `/boot`, the LV swap, the
-   ext4 root, the **20 GiB** portage tmpfs at `/var/tmp/portage`, the btrfs
-   subvols (`@data1`–`@data4` + their `_snapshots` with
-   `noatime,compress=zstd:3`; `@data5` + its `_snapshots` with `noatime` only,
-   **no `compress=`**), and `@portage_build` at `/var/tmp/portage-big`
-   (`noatime,nodatacow`). The kernel applies `ssd,discard=async,space_cache=v2`
-   automatically — don't write those. There is **no `/etc/crypttab`**; dracut
-   unlocks LUKS from the `rd.luks.uuid=` cmdline (step 3). See the
+1. **fstab** — everything by UUID (`blkid`): the EFI `/boot`, the LV swap, then
+   the Btrfs pool mounted subvolume-by-subvolume — `@`→`/`, `@home`→`/home`,
+   `@var_log`/`@var_cache`/`@var_tmp`, the matching `.snapshots`, the `@dataN`
+   areas, and `@portage_build`→`/var/tmp/portage-big` — plus the **20 GiB**
+   portage tmpfs at `/var/tmp/portage`. Compression: `zstd:1` on the system
+   subvols (`@`, `@home`, `@var_*`), `zstd:3` on `data1`–`data4`, none on `data5`,
+   `nodatacow` on `@portage_build`. The kernel applies
+   `ssd,discard=async,space_cache=v2` automatically — don't write those. There is
+   **no `/etc/crypttab`**; dracut unlocks LUKS from the `rd.luks.uuid=` cmdline
+   (step 3), and GRUB boots `root=UUID=<pool> rootflags=subvol=@`. See the
    [verbatim fstab](08-system-reference.md#disk-layout).
 2. **zram swap** — `emerge sys-apps/zram-generator`, write
    `/etc/systemd/zram-generator.conf` (`zram-size = min(ram / 2, 8192)`,
@@ -151,13 +155,18 @@ with **dracut** (which unlocks LUKS at boot), and wire up GRUB — all automatic
    the LV swap) and `/etc/sysctl.d/99-zram.conf` (`vm.page-cluster = 0`). The
    32 GiB LV swap stays at priority -1 as the hibernation image target (zram
    can't hold one).
-3. **snapper** — `emerge app-backup/snapper sys-fs/btrfs-progs`, create the
-   `data1` config (`snapper -c data1 create-config /data1`), set retention
-   (hourly 48 / daily 14 / weekly 4 / monthly 0, `ALLOW_USERS=ivmr`), put
-   `SNAPPER_CONFIGS="data1"` in `/etc/conf.d/snapper`, and enable
-   `snapper-timeline.timer` + `snapper-cleanup.timer` (leave
-   `snapper-boot.timer` disabled). Only `data1` is snapshotted; `data2`–`data5`
-   keep an empty `.snapshots` subvol and no config.
+3. **snapper + snapshot boot** — `emerge app-backup/snapper sys-fs/btrfs-progs
+   sys-fs/grub-btrfs`. Create configs for the snapshotted subvolumes:
+   `snapper -c root create-config /`, `snapper -c home create-config /home`, and
+   `snapper -c data1 create-config /data1`; list them in `/etc/conf.d/snapper`
+   (`SNAPPER_CONFIGS="root home data1"`). Retention is per config — e.g. `root`
+   light timeline + pre/post pairs around `@world` updates, `home` longer (user
+   data is the most important), `data1` hourly 48 / daily 14 / weekly 4 / monthly
+   0 (`ALLOW_USERS=ivmr`). Enable `snapper-timeline.timer` +
+   `snapper-cleanup.timer` (leave `snapper-boot.timer` disabled); `grub-btrfs`
+   adds a GRUB submenu to boot any snapshot for rollback. `data2`–`data5` keep an
+   empty `.snapshots` subvol and no config (declare them scratch, or add configs
+   if you want them snapshotted too).
 4. **systemd** — machine-id, hostname, **locale (`C.UTF8` + `en_GB` formats)**,
    timezone; enable `NetworkManager`, `systemd-resolved`, `systemd-timesyncd`,
    `lvm2-monitor`.
@@ -218,17 +227,23 @@ reinstall — see Path A).
 5. **Apply the flag changes** — rebuild affected packages:
    `emerge -uDN --changed-use --deep @world` (or a full `emerge -e @world` to
    rebuild everything against the new flags and kernel).
-6. **Storage layout** — converge onto btrfs + zram + snapper. The data areas
-   moved from five ext4 LVs to **one big btrfs LV** holding `@data1`–`@data5`
-   subvolumes (migration 2026-06-20). Because this touches only the *data* LVs
-   (not the encrypted root or partition table), it can be done in place: stand up
-   the new btrfs LV/subvols, copy the data over, then swap the fstab entries (see
-   the [Disk layout](08-system-reference.md#disk-layout) for the exact mount
-   options — `compress=zstd:3`, `data5` without, `@portage_build` `nodatacow`).
-   Add **zram** (`sys-apps/zram-generator` + `zram-generator.conf` +
-   `99-zram.conf`) and **snapper** (`app-backup/snapper`, the `data1` config,
-   `SNAPPER_CONFIGS="data1"`, the timeline/cleanup timers) as in Path A steps 5.2
-   and 5.3.
+6. **Storage layout** — converge onto the Btrfs pool + zram + snapper. Two parts,
+   different difficulty:
+   * **Data areas → Btrfs subvols** (in-place): standing up `@data1`–`@data5` in
+     one Btrfs LV touches only the data LVs, not the encrypted root or partition
+     table — create the pool/subvols, copy data over, swap the fstab entries. Add
+     **zram** (`sys-apps/zram-generator` + `zram-generator.conf` + `99-zram.conf`)
+     as in Path A step 5.2.
+   * **Root → Btrfs `@`** (the bigger move): getting `/` onto a snapshot-capable
+     `@` subvolume means moving the root filesystem off its ext4 LV into the pool.
+     The low-risk route is to fold it into the same Path-A pool: `btrfs send/receive`
+     or `rsync` the ext4 root into a fresh `@` subvolume, repoint
+     `root=UUID=<pool> rootflags=subvol=@` + the fstab, reinstall GRUB
+     (`sys-fs/grub-btrfs` for snapshot boot), then drop the old `vg0-root` LV.
+     Then add **snapper** configs for `root`, `home`, and `data1` as in Path A
+     step 5.3. (If that's more surgery than you want, a clean Path-A reinstall
+     onto the pool is simpler.) See [Disk layout](08-system-reference.md#disk-layout)
+     for the exact subvolumes and mount options.
 7. **Apps & services** — `emerge` the
    [@world set](08-system-reference.md#installed-applications-the-world-set);
    enable the [services](08-system-reference.md#enabled-services). Then bring up
@@ -238,11 +253,13 @@ reinstall — see Path A).
    [After Installation → Systemd services](03-after-installation.md#systemd-services)).
 8. **Clean up** — `emerge --depclean`, `eclean-kernel`, reboot, verify.
 
-> Migrating the **disk encryption / partition layout** (e.g. moving an
-> unencrypted install onto LUKS+LVM, or resizing the encrypted root LV) can't be
-> done in place — back up your data and follow Path A. The data-LV → btrfs
-> conversion in step 6 above *is* in-place-doable because it leaves the LUKS
-> container and root untouched.
+> Changing the **disk encryption itself** (e.g. moving an unencrypted install
+> onto LUKS+LVM) can't be done in place — back up your data and follow Path A.
+> The **data-LV → Btrfs** conversion in step 6 *is* in-place-doable (it leaves the
+> LUKS container and root untouched); the **root → Btrfs `@`** move is doable in
+> place too but is real surgery (rsync/send the root into the pool, repoint the
+> cmdline + fstab, reinstall GRUB) — when in doubt, a clean Path-A reinstall onto
+> the pool is the safer path to the same result.
 
 ---
 

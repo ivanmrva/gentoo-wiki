@@ -2,8 +2,8 @@
 
 A personal, opinionated guide to installing and configuring Gentoo Linux on a
 laptop with full-disk encryption (LUKS + LVM), systemd, GNOME and an Intel
-platform. Root is ext4 on LVM, with a Btrfs data pool (Snapper snapshots) and
-zram swap — the machine was Btrfs-migrated, it is no longer pure ext4.
+platform. A single **Btrfs pool** (on LUKS2 + LVM) holds **root (`@`) and data**
+as subvolumes — with Snapper snapshots, `grub-btrfs` snapshot-boot, and zram swap.
 
 📖 **Start here: [docs/](docs/README.md)** — or jump straight to the
 [step-by-step recreate/migrate runbook](docs/00-recreate-this-system.md).
@@ -15,7 +15,7 @@ zram swap — the machine was Btrfs-migrated, it is no longer pure ext4.
 5. [Troubleshooting](docs/05-troubleshooting.md)
 
 Reference: [System Reference](docs/08-system-reference.md) (incl. the
-[roadmap](docs/08-system-reference.md#roadmap--the-ideal-next-iteration)) ·
+[roadmap](docs/08-system-reference.md#roadmap--live-machine-status)) ·
 [Backup, clone & restore](docs/09-backup-restore.md) ·
 [Access System from a Live USB](docs/06-access-system-from-live-usb.md) ·
 [Various Tasks](docs/07-various-tasks.md)

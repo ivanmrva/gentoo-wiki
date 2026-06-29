@@ -41,24 +41,33 @@
    * `lvm pvcreate /dev/mapper/lvm`
 1. Create volume group vg0:
    * `vgcreate vg0 /dev/mapper/lvm`
-1. Create the logical volumes. This guide's current layout (after the **Stage 1 btrfs migration 2026-06-20**) is just **three** LVs — root, swap, and one big btrfs volume that holds all data areas as subvolumes:
-   * `lvcreate -L 100G -n root vg0`
+1. Create the logical volumes. This layout uses just **two** LVs — a swap LV for hibernation, and one big Btrfs pool that holds the **entire system *and* all data areas** as subvolumes (root included). There is **no separate root LV**:
    * `lvcreate -L 32G -n swap vg0`
-      * Swap stays a **separate LV** sized equal to RAM (32 GiB) to support **hibernation** — the compressed RAM image is written here, and it lives inside the LUKS container so the hibernation image is encrypted at rest. zram alone can't hold a hibernation image, so this disk swap is kept even though zram is the primary runtime swap. Without hibernation a smaller swap is fine.
-   * `lvcreate -l 100%FREE -n btrfs vg0` (one large volume — ~820 GiB here — that takes the rest of the free space)
-      * There used to be five fixed-size ext4 LVs here (`data1`–`data5`, 100 GiB each plus the remainder). Those are **gone**: `data1`–`data5` are now btrfs subvolumes inside this single LV, so they share one free-space pool instead of being pre-partitioned. The pre-migration fstab is preserved at `/var/lib/system-changes/etc/fstab.pre-btrfs.*` if you need the old extents.
-   * There is no need to create a boot partition on laptops with Windows, since it already exists (fat32 file system, EFI + GPT partition table)
-1. Create file systems on the previously created volumes
-   * `mkfs.ext4 /dev/mapper/vg0-root`
+      * Swap is a **separate LV sized = RAM** (32 GiB) so the machine can **hibernate**: the compressed RAM image is written here, inside the LUKS container, so it is encrypted at rest. zram can't hold a hibernation image, so this disk swap is kept even though zram is the primary runtime swap. Drop or shrink it if you never hibernate.
+   * `lvcreate -l 100%FREE -n btrfs vg0` (one large volume — ~920 GiB here — taking the rest of the free space)
+      * **Why no root LV:** the OS root lives in this same pool as the `@` subvolume, so root, `/home`, and every `/dataN` share one free-space pool instead of fixed-size partitions — and, crucially, the **root filesystem gains Btrfs snapshots** (a bad `emerge` or config edit rolls back in seconds instead of a reinstall).
+   * There is no need to create a boot partition on laptops with Windows, since it already exists (fat32 file system, EFI + GPT partition table).
+1. Create the filesystems:
    * `mkswap /dev/mapper/vg0-swap`
    * `mkfs.btrfs -L pool /dev/mapper/vg0-btrfs` (single-device btrfs; defaults give `data single`, `metadata DUP`)
-1. Create the btrfs subvolumes inside the pool. Mount the new filesystem somewhere temporary, create the subvolumes, then unmount — fstab later mounts each one by `subvol=` at its real mountpoint:
+1. Create the Btrfs subvolumes. Mount the pool somewhere temporary, create every subvolume, then unmount — `/etc/fstab` mounts each one by `subvol=` at its real mountpoint later:
    * `mkdir -p /mnt/pool && mount /dev/mapper/vg0-btrfs /mnt/pool`
-   * `for n in 1 2 3 4 5; do btrfs subvolume create /mnt/pool/@data$n; btrfs subvolume create /mnt/pool/@data${n}_snapshots; done`
-      * `@data1`–`@data5` → `/data1`–`/data5`; each `@dataN_snapshots` → `/dataN/.snapshots` (snapper's snapshot store — only `data1` actually gets a snapper config; the rest start empty).
-   * `btrfs subvolume create /mnt/pool/@portage_build` → mounted at `/var/tmp/portage-big` (disk-backed Portage build area for builds that exceed the tmpfs)
+   * **System + home** (these get Snapper snapshots):
+      * `btrfs subvolume create /mnt/pool/@`               → `/` (the OS root)
+      * `btrfs subvolume create /mnt/pool/@home`           → `/home`
+      * `btrfs subvolume create /mnt/pool/@snapshots`      → `/.snapshots` (root snapshot store)
+      * `btrfs subvolume create /mnt/pool/@home_snapshots` → `/home/.snapshots`
+   * **Split deliberately *out* of the root snapshot** — so they are *not* rolled back with `/` (you keep logs across a rollback, and caches/build scratch never bloat a snapshot):
+      * `btrfs subvolume create /mnt/pool/@var_log`        → `/var/log`
+      * `btrfs subvolume create /mnt/pool/@var_cache`      → `/var/cache`
+      * `btrfs subvolume create /mnt/pool/@var_tmp`        → `/var/tmp`
+   * **Data areas** (only `data1` gets a Snapper config by default; the rest start with an empty `.snapshots`):
+      * `for n in 1 2 3 4 5; do btrfs subvolume create /mnt/pool/@data$n; btrfs subvolume create /mnt/pool/@data${n}_snapshots; done`
+   * **On-disk Portage build area** for builds that exceed the RAM tmpfs:
+      * `btrfs subvolume create /mnt/pool/@portage_build`  → `/var/tmp/portage-big`
    * `umount /mnt/pool`
-   * **No per-area fixed sizing:** every subvolume draws from the same ~820 GiB pool, so any data area can grow until the whole pool is full — there are no per-`data*` capacity walls like the old ext4 LVs had. Mount options (compression, `nodatacow`, etc.) are set later in `/etc/fstab`, not here.
+   * `/opt` and `/usr/local` are intentionally **not** split out — they stay inside `@` so they roll back together with the system. The rule: split a subvolume off `@` only for things you *don't* want reverted by a root rollback (logs, caches, build scratch, `/home`, bulk data).
+   * **No per-area sizing:** every subvolume draws from the same ~920 GiB pool, so `/`, `/home`, and each `/dataN` grow until the whole pool is full — no fixed capacity walls. Mount options (compression, `nodatacow`) are set in `/etc/fstab`, not here.
 1. Verify LVM setup:
    * `lvdisplay`
 

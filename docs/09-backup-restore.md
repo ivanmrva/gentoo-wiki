@@ -457,8 +457,8 @@ Two routes — pick by how much you want to rebuild vs. restore wholesale.
 
 **Route 1 — reinstall, then restore data (cleaner, recommended).**
 1. Follow the [recreate runbook](00-recreate-this-system.md) to a bootable base
-   (partitions, LUKS+LVM, the ext4 root LV + btrfs data pool, stage3, kernel,
-   bootloader, GNOME).
+   (partitions, LUKS+LVM, the Btrfs pool with `@` root + system + data
+   subvolumes, stage3, kernel, bootloader, GNOME).
 2. Re-pull the [config repo](#layer-4--config-versioning-system-changes) and
    re-apply `make.conf`/`package.use`, then `emerge` the `@world` set from
    `var/lib/portage/world`.
@@ -474,9 +474,9 @@ Two routes — pick by how much you want to rebuild vs. restore wholesale.
    them (recreate or re-fetch their contents from source).
 
 **Route 2 — restore the whole system from the cloud.**
-1. Boot a live USB; create the LUKS2 container + LVM + filesystems exactly as in
-   [Before Installation](01-before-installation.md) (ext4 root LV, btrfs data
-   pool with the `@data1`…`@data5` subvolumes), mount the new root.
+1. Boot a live USB; create the LUKS2 container + LVM + Btrfs pool exactly as in
+   [Before Installation](01-before-installation.md) (the `@` root + `@home` +
+   `@var_*` + `@data1`…`@data5` subvolumes), then mount `@` (and the others).
 2. Install/configure `rclone` (re-auth the remote) and set the restic password
    from your kit, then restore the latest system snapshot onto the new root:
    ```bash

@@ -2,9 +2,11 @@
 
 A personal, opinionated guide to installing and configuring Gentoo Linux on a
 laptop with full-disk encryption (LUKS + LVM), systemd, GNOME and an Intel
-platform. Root is ext4 on LVM, with a Btrfs data pool (Snapper snapshots) and
-zram swap — the machine was Btrfs-migrated, it is no longer pure ext4. The steps
-reflect a working real-world setup rather than a generic handbook — adapt device
+platform. A single **Btrfs pool** (on LUKS2 + LVM) holds **root (`@`) and data**
+as subvolumes — with Snapper snapshots, `grub-btrfs` snapshot-boot, and zram swap.
+The steps reflect a working real-world setup rather than a generic handbook —
+where the author's live machine is still mid-migration (root not yet on Btrfs),
+the docs say so. Adapt device
 names, UUIDs, and hardware-specific flags to your own machine.
 
 > These notes assume familiarity with the [official Gentoo Handbook](https://wiki.gentoo.org/wiki/Handbook:Main_Page).
@@ -58,12 +60,12 @@ The guide follows the installation flow top to bottom:
   Snapper local Btrfs snapshots of `/data1`, config versioning, bootstrap
   secrets — the old rclone data sync is retired) and step-by-step restore/clone
   procedures.
-- **[Roadmap — the ideal next iteration](08-system-reference.md#roadmap--the-ideal-next-iteration)**
-  (in the System Reference) ties together the planned improvements — root on
-  Btrfs `@` with system snapshots, signed UKI + Secure Boot, and a second
-  independent cloud backup — each detailed inline in the doc that owns it. The
-  Btrfs data pool + Snapper are already implemented (2026-06-20 migration); these
-  docs describe the current setup *and* where it's heading.
+- **[Roadmap & live-machine status](08-system-reference.md#roadmap--live-machine-status)**
+  (in the System Reference) tracks the gap between the documented setup and the
+  author's actual box: the docs build the full Btrfs-root (`@` + system snapshots)
+  layout, while the live machine is **mid-migration** (data already on Btrfs, root
+  not yet). Plus the optional hardening still on the table — a second independent
+  cloud backup and signed UKI + Secure Boot.
 - [Access System from a Live USB](06-access-system-from-live-usb.md) — unlock
   an encrypted disk and chroot in for recovery.
 - [Various Tasks](07-various-tasks.md) — fonts, BIOS updates, and other

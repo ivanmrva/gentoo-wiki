@@ -1,9 +1,12 @@
 # System Reference (current machine snapshot)
 
-A point-in-time snapshot of the actual running system, captured so the machine
-can be recreated from scratch. Where the step-by-step guide explains *how*, this
-page records *exactly what* is installed and configured. Live-audited
-**2026-06-26**.
+A snapshot of the running system, captured so the machine can be recreated from
+scratch. Where the step-by-step guide explains *how*, this page records *exactly
+what* is installed and configured. Live-audited **2026-06-26**. The **Disk
+layout** below documents the **target** Btrfs-root layout these docs build; where
+the author's live box is still mid-migration (root not yet on Btrfs), a
+*"Live machine status"* note says so. Everything else (packages, services,
+`make.conf`, kernel) is the verbatim current state.
 
 > **Privacy note:** machine-id, hardware serial/SKU, WiFi SSIDs/PSKs, the private
 > git-mirror remote, and the cloud backup target are **redacted** here. The
@@ -38,16 +41,22 @@ nvme0n1                    953.9G
 ├─nvme0n1p2                16M          (Microsoft reserved)
 └─nvme0n1p3   crypto_LUKS 952.7G        (LUKS2 container; UUID 8b2c98eb-b644-40d8-8b6d-87bea26bcc8a)
   └─luks-8b2c98eb…  LVM2_member         (vg0)
-    ├─vg0-root   ext4   100G  /         (UUID 4384aae9-0956-4c11-a39d-374506d3e09c)
     ├─vg0-swap   swap    32G  [SWAP]    (UUID 501eeb58-907b-405a-91af-77f523c8d92e; prio -1; = RAM, hibernation)
-    └─vg0-btrfs  btrfs 820.7G  (pool)   (UUID 048292a5-5607-449a-9247-92aad183be1f)
+    └─vg0-btrfs  btrfs ~920G  (pool)    (UUID 048292a5-…) — @ (root) + system + data subvolumes
 ```
 
-This replaced the old "five separate ext4 LVs" layout (one per `/dataN`) in the
-**Stage 1 btrfs migration (2026-06-20)**. `vg0` now has **only three LVs**: the
-ext4 root, the swap LV (kept for hibernation), and one big btrfs pool that holds
-*all* the data areas as subvolumes. The pre-migration fstab is preserved at
-`/var/lib/system-changes/etc/fstab.pre-btrfs.<timestamp>`.
+`vg0` holds just **two LVs**: the swap LV (for hibernation) and one big Btrfs
+pool that holds the **entire system *and* all data** as subvolumes — `/` is the
+`@` subvolume, not a separate ext4 LV. Putting `/` in Btrfs is what gives the
+system **snapshots/rollback**; everything shares one free-space pool.
+
+> **Live machine status (mid-migration).** The author's running box still has `/`
+> on a separate **ext4 `vg0-root` LV** — its *data* areas are already Btrfs
+> subvolumes, but the **root → Btrfs `@`** move is the one migration step not yet
+> done. The layout documented here is what the
+> [install runbook](00-recreate-this-system.md) builds and what this machine is
+> converging to; the pre-Btrfs fstab is preserved at
+> `/var/lib/system-changes/etc/fstab.pre-btrfs.<timestamp>`.
 
 LUKS header (per the original install, root-only — **not** re-verified this pass):
 `aes-xts-plain64`, 512-bit key, PBKDF `pbkdf2` / `sha256`. PBKDF is **pbkdf2
@@ -58,37 +67,44 @@ LUKS header (per the original install, root-only — **not** re-verified this pa
 
 | LV | Size | FS | Mount | Options |
 | --- | --- | --- | --- | --- |
-| `vg0-root` | 100 G | ext4 | `/` | `defaults,noatime` |
 | `vg0-swap` | 32 G | swap | `[SWAP]` | priority -1; hibernation resume target |
-| `vg0-btrfs` | 820.7 G | btrfs | the `pool` filesystem | all subvolumes below |
+| `vg0-btrfs` | ~920 G | btrfs | the `pool` filesystem | all subvolumes below (incl. `@` → `/`) |
 
-There are **no** `vg0-data1`…`vg0-data5` LVs anymore.
+There is **no** `vg0-root` LV (root is the `@` subvolume) and no `vg0-data1`…
+`vg0-data5` LVs (the data areas are subvolumes too).
 
 ### Btrfs pool (`vg0-btrfs`, label `pool`)
 
 One single-device btrfs filesystem (UUID `048292a5-…`), metadata/system **DUP**,
-data **single** (the single-disk default). All `/dataN` areas plus the on-disk
-Portage build dir live here as subvolumes:
+data **single** (the single-disk default). Root, home, the carved-out system
+areas, all `/dataN`, and the on-disk Portage build dir live here as subvolumes:
 
-| Subvolume | Mountpoint | fstab mount options |
-| --- | --- | --- |
-| `@data1` | `/data1` | `noatime,compress=zstd:3` |
-| `@data1_snapshots` | `/data1/.snapshots` | `noatime,compress=zstd:3` |
-| `@data2` | `/data2` | `noatime,compress=zstd:3` |
-| `@data2_snapshots` | `/data2/.snapshots` | `noatime,compress=zstd:3` |
-| `@data3` | `/data3` | `noatime,compress=zstd:3` |
-| `@data3_snapshots` | `/data3/.snapshots` | `noatime,compress=zstd:3` |
-| `@data4` | `/data4` | `noatime,compress=zstd:3` |
-| `@data4_snapshots` | `/data4/.snapshots` | `noatime,compress=zstd:3` |
-| `@data5` | `/data5` | `noatime` (**no `compress=`** in fstab) |
-| `@data5_snapshots` | `/data5/.snapshots` | `noatime` |
-| `@portage_build` | `/var/tmp/portage-big` | `noatime,nodatacow` (CoW off for build churn) |
+| Subvolume | Mountpoint | fstab mount options | Snapshotted? |
+| --- | --- | --- | --- |
+| `@` | `/` | `noatime,compress=zstd:1` | **yes** (`root` config) |
+| `@snapshots` | `/.snapshots` | `noatime,compress=zstd:1` | (snapshot store for `@`) |
+| `@home` | `/home` | `noatime,compress=zstd:1` | **yes** (`home` config) |
+| `@home_snapshots` | `/home/.snapshots` | `noatime,compress=zstd:1` | (snapshot store for `@home`) |
+| `@var_log` | `/var/log` | `noatime,compress=zstd:1` | no (keep logs across rollback) |
+| `@var_cache` | `/var/cache` | `noatime,compress=zstd:1` | no (disposable) |
+| `@var_tmp` | `/var/tmp` | `noatime` | no (build/scratch) |
+| `@data1` | `/data1` | `noatime,compress=zstd:3` | **yes** (`data1` config) |
+| `@data1_snapshots` | `/data1/.snapshots` | `noatime,compress=zstd:3` | (snapshot store) |
+| `@data2`–`@data4` | `/data2`–`/data4` | `noatime,compress=zstd:3` | no (config optional) |
+| `@data2_snapshots`–`@data4_snapshots` | `/dataN/.snapshots` | `noatime,compress=zstd:3` | (empty store) |
+| `@data5` | `/data5` | `noatime` (**no `compress=`**) | no |
+| `@data5_snapshots` | `/data5/.snapshots` | `noatime` | (empty store) |
+| `@portage_build` | `/var/tmp/portage-big` | `noatime,nodatacow` (CoW off for build churn) | no |
 
-`@data5` intentionally omits `compress=` from its fstab line (the kernel may
-still report `compress=zstd:3` filesystem-wide once any subvol established it).
-The kernel also applies `ssd`, `discard=async`, and `space_cache=v2`
-automatically — those are not written in fstab. There is **no `/etc/crypttab`**;
-LUKS is unlocked by dracut via `rd.luks.uuid=` on the kernel cmdline.
+**Compression by area:** `zstd:1` on the hot, churny system subvolumes (`@`,
+`@home`, `@var_*`) where latency matters; `zstd:3` on the largely-static
+`data1`–`data4`; `data5` omits `compress=` (already-compressed data). The kernel
+adds `ssd`, `discard=async`, `space_cache=v2` automatically (not in fstab).
+**What's split out of `@`:** `@home` and the `@var_*`/`@data*` areas — everything
+you *don't* want reverted by a root rollback (logs, caches, build scratch, user
+data, bulk data). `/opt` and `/usr/local` stay **inside** `@`. There is **no
+`/etc/crypttab`**; LUKS is unlocked by dracut via `rd.luks.uuid=`, and GRUB boots
+`root=UUID=<pool> rootflags=subvol=@`.
 
 ### Swap: 32 G LV + 8 G zram (prioritised)
 
@@ -119,136 +135,55 @@ zram tunables:
   recommended for zram).
 - `/etc/sysctl.d/99-local.conf` → `vm.swappiness = 100`, `vm.max_map_count = 1048576`.
 
-### Snapper (data1 only)
+### Snapper (per subvolume)
 
-Exactly **one** snapper config exists — `data1` → `/data1`
-(`SNAPPER_CONFIGS="data1"` in `/etc/conf.d/snapper`). `data2`–`data5` each have a
-mounted but **empty** `.snapshots` subvolume and **no** snapper config, so they
-are *not* snapshotted.
+Snapper runs a config per snapshotted subvolume, listed in `/etc/conf.d/snapper`
+(`SNAPPER_CONFIGS="root home data1"`). Retention is tuned per area — `/home`
+keeps the deepest history (accidental-file recovery is the whole point), `/` gets
+a light timeline plus a pre/post pair around every `@world` update (so a bad
+update rolls back in seconds), and `/data1` keeps the docs/projects timeline:
 
-`snapper -c data1 get-config` (key values):
-
-| Key | Value |
-| --- | --- |
-| SUBVOLUME | `/data1` |
-| ALLOW_USERS | `ivmr` |
-| TIMELINE_LIMIT_HOURLY / DAILY / WEEKLY / MONTHLY | 48 / 14 / 4 / 0 |
-| NUMBER_LIMIT / NUMBER_LIMIT_IMPORTANT | 50 / 10 |
-| EMPTY_PRE_POST_CLEANUP | yes |
+| Config | Subvolume | Purpose | Retention (hourly/daily/weekly/monthly) |
+| --- | --- | --- | --- |
+| `root` | `/` | system rollback (+ pre/post on `@world`) | light timeline + `NUMBER` pre/post pairs |
+| `home` | `/home` | accidental file recovery (most important) | 48 / 14 / 8 / 6 |
+| `data1` | `/data1` | docs/projects | 48 / 14 / 4 / 0 (`ALLOW_USERS=ivmr`) |
 
 The upstream `snapper-timeline.timer` + `snapper-cleanup.timer` (hourly) are
-enabled; `snapper-boot.timer` is **disabled**. World updates are *not* wrapped in
-pre/post pairs — snapper here is a pure hourly timeline for `/data1` only.
-(The config file `/etc/snapper/configs/data1` is root-only `0640`, so even the
-mirror copy is unreadable as `ivmr`.)
+enabled; `snapper-boot.timer` is **disabled**. `sys-fs/grub-btrfs` adds a GRUB
+submenu to boot any snapshot read-only for rollback. `data2`–`data5` keep an
+empty `.snapshots` subvolume and no config (scratch by default; add a config to
+snapshot them too).
 
-### Planned improvement: btrfs root (`@`) + per-area snapshots
+> **Live machine status.** On the author's running (pre root→Btrfs) box, only the
+> **`data1`** config exists today (`48 / 14 / 4 / 0`, `ALLOW_USERS=ivmr`, no
+> pre/post wrap); the `root`/`home` configs land with the root→Btrfs move. The
+> config files under `/etc/snapper/configs/` are root-only `0640`, so even the
+> mirror copies are unreadable as `ivmr`.
 
-The disk layout above is built for **data** recovery (`/data1` has a snapper
-timeline), but the **system** itself can't be rolled back: `/` is plain ext4 on
-`vg0-root`, so a bad `emerge -uDN @world` or a broken config edit has no
-in-place undo — you reinstall or restore from restic. The next iteration closes
-that gap by moving the OS onto btrfs subvolumes so updates get pre/post
-snapshots. This is the primary remaining goal; the bullets below give the
-concrete current → target shape with this machine's real names and UUIDs.
+### Design notes (Btrfs layout)
 
-**Keep LVM under btrfs (no change).** `vg0` stays: one encrypted **`vg0-swap`
-LV** for hibernation (zram can't hold a hibernation image) plus the big
-**`vg0-btrfs` pool** for everything else. We do **not** carve `/home`, `/opt`,
-`/data*` into their own LVs — those become btrfs subvolumes that share the
-pool's free space instead of being fixed-size partitions. The only LV-level
-change is folding the ext4 `vg0-root` into the pool as the `@` subvolume.
+Rationale behind the subvolume choices above:
 
-**Root and system areas as subvolumes.**
+- **What to split off `@`:** only things you *don't* want a root rollback to
+  revert — `/home`, the `/dataN` areas, `/var/log` (keep logs across a rollback),
+  `/var/cache` and `/var/tmp` (disposable / build scratch). `/opt`, `/usr/local`,
+  and `/etc` stay **inside** `@` so they roll back together with the packages and
+  config they belong to (`/etc` is also in the restic backup, since both recovery
+  paths need it). Add a `/var/lib/*` subvolume (e.g. `@docker → /var/lib/docker`)
+  **only if** that workload actually hammers it; otherwise it's just noise.
+- **Mount paths (deliberate):** the data subvolumes mount at top-level
+  `/data1`…`/data5` (each with its own `@dataN_snapshots`), *not* under a
+  `/data/dataN` tree — to avoid churning every path/script/bind-mount that already
+  references `/data1`.
+- **Hibernate swap sizing:** `vg0-swap` is sized **= RAM** (32 G here), the safe
+  floor for a full hibernation image. Bump it if RAM ever grows:
 
-> **Now:** `/` is ext4 on `vg0-root` (100 G); `/home`, `/opt`, `/usr/local`,
-> `/var/log`, `/var/cache`, `/var/tmp` all live *inside* that ext4 root. Only
-> `@data1`…`@data5` exist as btrfs subvolumes (in the `vg0-btrfs` pool).
-> **Next iteration:** add OS subvolumes to the same pool —
-> `@ → /`, `@home → /home`, `@opt → /opt`, `@usr_local → /usr/local`,
-> `@var_log → /var/log`, `@var_cache → /var/cache`, `@var_tmp → /var/tmp` —
-> each with its own snapshot subvolume (`@snapshots → /.snapshots`,
-> `@home_snapshots → /home/.snapshots`, `@opt_snapshots`, `@usr_local_snapshots`),
-> matching the existing per-area `@dataN_snapshots` convention. Then drop the
-> `vg0-root` LV.
-> **Why:** with `/` on `@`, a snapper pre/post pair brackets every update and a
-> rollback is a seconds-long subvolume swap + reboot, not a reinstall.
-
-**What stays inside the root subvolume** (do *not* split): `/bin`, `/sbin`,
-`/lib`, `/lib64`, `/usr`, `/etc`, `/root`, `/dev`, `/proc`, `/sys`, `/run`,
-`/mnt`, `/media`. Keeping `/etc` inside `@` is deliberate — it must roll back
-*together* with the packages and system state it configures (and it's separately
-in the restic backup, since both recovery paths need it).
-
-**Mount options.**
-
-> **Now:** `@data1`–`@data4` (and their `_snapshots`) mount
-> `noatime,compress=zstd:3`; `@data5` is `noatime` with **no `compress=`**;
-> `@portage_build` is `noatime,nodatacow`. The kernel adds `ssd`,
-> `discard=async`, `space_cache=v2` itself.
-> **Next iteration:** the new OS subvolumes mount
-> `noatime,compress=zstd:1,ssd,discard=async` — i.e. **`zstd:1`** for the hot,
-> frequently-rewritten system tree, where lower latency beats density.
-> **Why:** `zstd:3` is a deliberate *denser* choice on the largely-static data
-> areas; `zstd:1` trades a little ratio for cheaper CPU on the churny `@`/`@home`
-> path. Leave `@var_tmp` on disk (Portage builds there — never RAM-back it) and
-> keep `@portage_build` on `nodatacow`.
-
-**Hibernate swap sizing.**
-
-> **Now:** `vg0-swap` is **32 G** = exactly this machine's 32 GiB RAM, the
-> minimum that reliably holds a full hibernation image (the compressed image is
-> smaller, but sizing at = RAM is the safe rule). `resume=UUID=501eeb58-…`
-> already points at it.
-> **Next iteration:** keep 32 G (no change needed at 32 GiB RAM). For reference,
-> the sizing rule that drove it — bump the swap LV if RAM ever grows:
->
-> | RAM | Swap LV for hibernate |
-> |---:|---:|
-> | 16 GB | 24–32 GB |
-> | 32 GB | 40–48 GB |
-> | 64 GB | 64–80 GB |
->
-> **Why:** hibernation writes the RAM image to swap; an undersized swap LV makes
-> hibernate fail silently. 32 G is the floor at 32 GiB RAM; the table headroom
-> covers tmpfs/zram pressure if you later push it.
-
-**Snapper, per subvolume.**
-
-> **Now:** one config — `data1` (`hourly 48 / daily 14 / weekly 4 / monthly 0`,
-> `ALLOW_USERS=ivmr`) on the upstream `snapper-timeline`/`snapper-cleanup`
-> hourly timers. `data2`–`data5` have empty `.snapshots` subvolumes but **no
-> config**; there is no `@`/`@home` timeline (those subvolumes don't exist), and
-> `@world` updates are **not** wrapped in pre/post pairs.
-> **Next iteration:** add snapper configs for the new `@` and `@home` and set a
-> per-area retention policy; `/home` matters most because accidental-file
-> recovery is the whole point.
->
-> | Subvolume | Purpose | Retention |
-> | --- | --- | --- |
-> | `@` (`/`) | system rollback | pre/post-update + daily 7 / weekly 4 / monthly 3 |
-> | `@home` | accidental file recovery (most important) | hourly 48 / daily 14 / weekly 8 / monthly 6 |
-> | `@opt`, `@usr_local` | manual/custom software | daily 7 / weekly 8 / monthly 6 |
-> | `@data1` (docs/projects) | already configured — keep | hourly 48 / daily 14 / weekly 4 / monthly 0 |
->
-> Then wrap large `@world` updates in a pre/post snapshot pair (snapper's
-> pre/post around `emerge -uDN @world`), so a bad update rolls back in seconds.
-> **Do not** put a normal timeline on `@var_tmp`, `@var_cache`, `@var_log`, or
-> swap (very short-lived `@var_log` snaps only if ever needed).
-> **Why:** per-subvolume policies let `/home` keep deep history while the OS
-> tree keeps just enough to undo the last few updates.
-
-**What to split — and what not to.** Split out as subvolumes: `/home`,
-`/data*` (done), `/opt`, `/usr/local`, `/var/log`, `/var/cache`, `/var/tmp`,
-plus `/tmp` as tmpfs (already RAM-backed). Add a `@`-style subvolume for a
-`/var/lib/*` dir **only if** the workload actually hammers it (e.g.
-`@docker → /var/lib/docker`, `@libvirt → /var/lib/libvirt/images`); otherwise
-it's just noise. Everything in the "stays inside root" list above is *not* split.
-
-> **Mount-path note (deliberate divergence):** the data subvolumes stay mounted
-> at top-level **`/data1`…`/data5`**, each with its own `@dataN_snapshots`, not
-> under a `/data/dataN` tree. That's an intentional choice to avoid churning
-> every path, script, and bind-mount that already references `/data1`.
+  | RAM | Swap LV for hibernate |
+  |---:|---:|
+  | 16 GB | 24–32 GB |
+  | 32 GB | 40–48 GB |
+  | 64 GB | 64–80 GB |
 
 ### Portage build directories (two-tier)
 
@@ -507,8 +442,12 @@ initramfs without baking in the cmdline (the cmdline comes from GRUB).
 GRUB_DISTRIBUTOR="Gentoo"
 GRUB_TIMEOUT=2
 GRUB_DISABLE_LINUX_PARTUUID=false
-GRUB_CMDLINE_LINUX="dolvm rd.luks.options=discard rd.luks.uuid=8b2c98eb-b644-40d8-8b6d-87bea26bcc8a root=/dev/mapper/vg0-root init=/usr/lib/systemd/systemd acpi_backlight=native i915.enable_dpcd_backlight=1 resume=UUID=501eeb58-907b-405a-91af-77f523c8d92e"
+GRUB_CMDLINE_LINUX="dolvm rd.luks.options=discard rd.luks.uuid=8b2c98eb-b644-40d8-8b6d-87bea26bcc8a root=UUID=048292a5-5607-449a-9247-92aad183be1f rootflags=subvol=@ init=/usr/lib/systemd/systemd acpi_backlight=native i915.enable_dpcd_backlight=1 resume=UUID=501eeb58-907b-405a-91af-77f523c8d92e"
 ```
+
+(`root=UUID=<pool> rootflags=subvol=@` boots the `@` subvolume. The author's live,
+mid-migration box still boots `root=/dev/mapper/vg0-root` — that flips to the form
+above with the root→Btrfs move.)
 
 - `dolvm` + `rd.luks.options=discard` + `rd.luks.uuid=…` — activate LVM, pass TRIM
   to LUKS, and name the encrypted partition (`nvme0n1p3`) for dracut to unlock.
@@ -524,7 +463,7 @@ GRUB_CMDLINE_LINUX="dolvm rd.luks.options=discard rd.luks.uuid=8b2c98eb-b644-40d
   until the next reboot regenerates `grub.cfg`.)
 
 No UKI, no Secure Boot, no module signing — see the
-[Roadmap](#roadmap--the-ideal-next-iteration).
+[Roadmap](#roadmap--live-machine-status).
 
 ## Enabled services
 
@@ -767,30 +706,31 @@ no stable version (so they'd *have* to be keyworded) are `net-im/slack` and
 `docker`, `kubectl`, `terraform`). Everything else installed from testing has a
 stable version and would downgrade.
 
-## Roadmap — the ideal next iteration
+## Roadmap & live-machine status
 
-Everything above describes the machine **as it runs today**. This section is the
-coherent **target** it's converging toward — *derived from the current setup, not a
-clean-slate redesign*. Each improvement is detailed (with this machine's real
-names and values) in the doc that owns it; the items here are the "what's still
-future" half of the current → next-iteration pairs scattered through these docs.
+These docs describe the **target** setup — root on Btrfs `@` with system
+snapshots, the full subvolume layout, two-tier builds, the backup constellation.
+This section tracks the two gaps that remain: where the author's **running
+machine** still has to catch up to the documented layout, and the genuinely
+**optional** hardening left to consider. *Derived from the current setup, not a
+clean-slate redesign.*
 
 Target architecture, in one line:
 
 ```text
-LUKS2 + LVM + Btrfs + Snapper + restic   →   root on @, two cloud repos, signed UKI
+LUKS2 + LVM + Btrfs (root on @) + Snapper + restic   (+ optional: 2nd cloud, signed UKI)
 ```
 
 Recovery stays layered with **no external-SSD layer** — a deliberate trade-off
-(less hardware to maintain, at the cost of a slower full restore), acceptable
-*only* because the rebuild is documented and two independent cloud repos are kept.
+(less hardware, slower full restore), acceptable *only* because the rebuild is
+documented and (target) two independent cloud repos are kept.
 
-| Improvement | Now → target | Where it's detailed | Status |
+| Item | State on the live machine | Where it's detailed | Status |
 | --- | --- | --- | --- |
-| **Root on btrfs (`@`) + system snapshots** | `/` is ext4, no rollback → `@` / `@home` / `@var_*` subvolumes with snapper pre/post around `@world` updates | [Planned improvement: btrfs root + per-area snapshots](#planned-improvement-btrfs-root---per-area-snapshots) | planned |
-| **Signed UKI + Secure Boot** | GRUB + unsigned kernel on the ESP (pbkdf2) → signed UKI, Secure Boot, optional TPM2 unlock (passphrase + recovery key still mandatory) | [02 → signed UKI + Secure Boot](02-installation.md#planned-improvement-signed-uki--secure-boot-drop-grub) | planned |
+| **Root on Btrfs `@` + system snapshots** | documented layout; the live box is **mid-migration** — still ext4 `vg0-root`, data already on Btrfs | [Disk layout](#disk-layout) | converging |
 | **2nd independent cloud + wider data coverage** | one cloud provider, `/data1`-only off-site → `restic copy` to a 2nd provider; off-site + snapshots for `data2`–`data5` (or declare them scratch) | [09 → second cloud provider + wider coverage](09-backup-restore.md#planned-improvement-second-cloud-provider--wider-coverage) | planned |
-| **Package & install policy** | Portage default · `-bin` heavyweights · npm/AppImage only for the 3 non-Portage tools | [04 → Package & install policy](04-application-configuration.md#package--install-policy) | already followed |
+| **Signed UKI + Secure Boot** | GRUB + unsigned kernel on the ESP (pbkdf2); UKI/Secure Boot + TPM2 unlock is optional evil-maid hardening | [02 → signed UKI + Secure Boot](02-installation.md#planned-improvement-signed-uki--secure-boot-drop-grub) | optional |
+| **Package & install policy** | Portage default · `-bin` heavyweights · npm/AppImage only for the 3 non-Portage tools | [04 → Package & install policy](04-application-configuration.md#package--install-policy) | done |
 
 ### Cleanup candidates
 

@@ -8,9 +8,11 @@ To access an encrypted disk from a live USB, execute:
 
 # Chrooting
 
-1. Create a directory for the new Gentoo installation and mount the root LVM volume to it:
+1. Create a directory and mount the **`@` (root) subvolume** of the Btrfs pool to it:
    * `mkdir /mnt/gentoo`
-   * `mount /dev/mapper/vg0-root /mnt/gentoo`
+   * `mount -o subvol=@ /dev/mapper/vg0-btrfs /mnt/gentoo`
+   * (There is no `vg0-root` LV — root is the `@` subvolume. On an older ext4-root system you'd `mount /dev/mapper/vg0-root /mnt/gentoo` instead.)
+   * For a full chroot you'll also want the other subvolumes mounted under it (`@home`→`/mnt/gentoo/home`, `@var_log`→`/mnt/gentoo/var/log`, …), each with `-o subvol=@…`.
 1. Copy DNS info (to ensure Internet is working once chrooted to _/mnt/gentoo_):
    * `cp --dereference /etc/resolv.conf /mnt/gentoo/etc/`
 1. Mount necessary file systems:
@@ -22,7 +24,7 @@ To access an encrypted disk from a live USB, execute:
    * `mount --bind /run /mnt/gentoo/run`
    * `mount --make-slave /mnt/gentoo/run`
       * or as one command:
-         * `sudo mount --types proc /proc /mnt/gentoo/proc && sudo mount --rbind /sys /mnt/gentoo/sys && sudo mount --make-rslave /mnt/gentoo/sys && sudo mount --rbind /dev /mnt/gentoo/dev && sudo sudo mount --make-rslave /mnt/gentoo/dev && sudo mount --bind /run /mnt/gentoo/run && sudo mount --make-slave /mnt/gentoo/run`
+         * `sudo mount --types proc /proc /mnt/gentoo/proc && sudo mount --rbind /sys /mnt/gentoo/sys && sudo mount --make-rslave /mnt/gentoo/sys && sudo mount --rbind /dev /mnt/gentoo/dev && sudo mount --make-rslave /mnt/gentoo/dev && sudo mount --bind /run /mnt/gentoo/run && sudo mount --make-slave /mnt/gentoo/run`
    * If your distribution (Ubuntu Live USB) has _/dev/shm_ being a symbolic link to _/run/shm/_, you need to also execute:
       * `test -L /dev/shm && rm /dev/shm && mkdir /dev/shm`
       * `mount --types tmpfs --options nosuid,nodev,noexec shm /dev/shm`
