@@ -68,12 +68,13 @@ group.
    Btrfs pool as the `@` subvolume, so the whole system *and* all data share one
    pool and `/` gains snapshots.
 4. `mkswap` the swap LV, `mkfs.btrfs -L pool` the big LV, then mount the pool once
-   and create every subvolume: `@` (root) + `@home` + `@snapshots` +
-   `@home_snapshots`; `@var_log` / `@var_cache` / `@var_tmp` (split out of the
-   root snapshot); `@data1`…`@data5` + `@data1_snapshots`…`@data5_snapshots`; and
-   `@portage_build` (on-disk overflow build dir). `/opt` and `/usr/local` stay
-   inside `@`. See [Disk layout](08-system-reference.md#disk-layout) for the exact
-   subvolume table and the reasoning behind each split.
+   and create the subvolumes: `@` (root), `@home`, `@var_log` / `@var_cache` /
+   `@var_tmp` (split out of the root snapshot), `@data1`…`@data5`, and
+   `@portage_build` (on-disk overflow build dir). **Don't** create the
+   `.snapshots` subvolumes by hand — snapper makes those itself (step 5.3).
+   `/opt` and `/usr/local` stay inside `@`. See
+   [Disk layout](08-system-reference.md#disk-layout) for the exact subvolume table
+   and the reasoning behind each split.
 
 ### 2. Unpack stage3 and chroot → [02 · Stage3 / Chrooting](02-installation.md#stage3-installation)
 
@@ -140,14 +141,15 @@ with **dracut** (which unlocks LUKS at boot), and wire up GRUB — all automatic
 
 1. **fstab** — everything by UUID (`blkid`): the EFI `/boot`, the LV swap, then
    the Btrfs pool mounted subvolume-by-subvolume — `@`→`/`, `@home`→`/home`,
-   `@var_log`/`@var_cache`/`@var_tmp`, the matching `.snapshots`, the `@dataN`
-   areas, and `@portage_build`→`/var/tmp/portage-big` — plus the **20 GiB**
-   portage tmpfs at `/var/tmp/portage`. Compression: `zstd:1` on the system
-   subvols (`@`, `@home`, `@var_*`), `zstd:3` on `data1`–`data4`, none on `data5`,
-   `nodatacow` on `@portage_build`. The kernel applies
-   `ssd,discard=async,space_cache=v2` automatically — don't write those. There is
-   **no `/etc/crypttab`**; dracut unlocks LUKS from the `rd.luks.uuid=` cmdline
-   (step 3), and GRUB boots `root=UUID=<pool> rootflags=subvol=@`. See the
+   `@var_log`/`@var_cache`/`@var_tmp`, the `@dataN` areas, and
+   `@portage_build`→`/var/tmp/portage-big` — plus the **20 GiB** portage tmpfs at
+   `/var/tmp/portage`. **No `.snapshots` lines** — snapper creates those nested
+   subvolumes itself (step 3). Compression: `zstd:1` on the system subvols (`@`,
+   `@home`, `@var_*`), `zstd:3` on `data1`–`data4`, none on `data5`, `nodatacow`
+   on `@portage_build`. The kernel auto-applies `ssd` + `space_cache=v2`; TRIM is
+   via the `fstrim.timer`. There is **no `/etc/crypttab`**; dracut unlocks LUKS
+   from the `rd.luks.uuid=` cmdline (step 3), and GRUB boots
+   `root=UUID=<pool> rootflags=subvol=@`. See the
    [verbatim fstab](08-system-reference.md#disk-layout).
 2. **zram swap** — `emerge sys-apps/zram-generator`, write
    `/etc/systemd/zram-generator.conf` (`zram-size = min(ram / 2, 8192)`,
@@ -162,11 +164,12 @@ with **dracut** (which unlocks LUKS at boot), and wire up GRUB — all automatic
    (`SNAPPER_CONFIGS="root home data1"`). Retention is per config — e.g. `root`
    light timeline + pre/post pairs around `@world` updates, `home` longer (user
    data is the most important), `data1` hourly 48 / daily 14 / weekly 4 / monthly
-   0 (`ALLOW_USERS=ivmr`). Enable `snapper-timeline.timer` +
-   `snapper-cleanup.timer` (leave `snapper-boot.timer` disabled); `grub-btrfs`
-   adds a GRUB submenu to boot any snapshot for rollback. `data2`–`data5` keep an
-   empty `.snapshots` subvol and no config (declare them scratch, or add configs
-   if you want them snapshotted too).
+   0 (`ALLOW_USERS=ivmr`). `create-config` makes each `.snapshots` subvolume
+   itself (don't pre-create them). Enable `snapper-timeline.timer` +
+   `snapper-cleanup.timer` (leave `snapper-boot.timer` disabled); enable
+   `grub-btrfsd.service` so `grub-btrfs` keeps the GRUB "boot a snapshot" submenu
+   up to date. `data2`–`data5` have no config (scratch by default; add one to
+   snapshot them too).
 4. **systemd** — machine-id, hostname, **locale (`C.UTF8` + `en_GB` formats)**,
    timezone; enable `NetworkManager`, `systemd-resolved`, `systemd-timesyncd`,
    `lvm2-monitor`.

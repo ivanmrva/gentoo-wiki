@@ -82,28 +82,29 @@ areas, all `/dataN`, and the on-disk Portage build dir live here as subvolumes:
 | Subvolume | Mountpoint | fstab mount options | Snapshotted? |
 | --- | --- | --- | --- |
 | `@` | `/` | `noatime,compress=zstd:1` | **yes** (`root` config) |
-| `@snapshots` | `/.snapshots` | `noatime,compress=zstd:1` | (snapshot store for `@`) |
 | `@home` | `/home` | `noatime,compress=zstd:1` | **yes** (`home` config) |
-| `@home_snapshots` | `/home/.snapshots` | `noatime,compress=zstd:1` | (snapshot store for `@home`) |
 | `@var_log` | `/var/log` | `noatime,compress=zstd:1` | no (keep logs across rollback) |
 | `@var_cache` | `/var/cache` | `noatime,compress=zstd:1` | no (disposable) |
 | `@var_tmp` | `/var/tmp` | `noatime` | no (build/scratch) |
 | `@data1` | `/data1` | `noatime,compress=zstd:3` | **yes** (`data1` config) |
-| `@data1_snapshots` | `/data1/.snapshots` | `noatime,compress=zstd:3` | (snapshot store) |
-| `@data2`–`@data4` | `/data2`–`/data4` | `noatime,compress=zstd:3` | no (config optional) |
-| `@data2_snapshots`–`@data4_snapshots` | `/dataN/.snapshots` | `noatime,compress=zstd:3` | (empty store) |
+| `@data2`–`@data4` | `/data2`–`/data4` | `noatime,compress=zstd:3` | no |
 | `@data5` | `/data5` | `noatime` (**no `compress=`**) | no |
-| `@data5_snapshots` | `/data5/.snapshots` | `noatime` | (empty store) |
 | `@portage_build` | `/var/tmp/portage-big` | `noatime,nodatacow` (CoW off for build churn) | no |
+
+The `.snapshots` stores are **not** separate top-level subvolumes or fstab
+entries — Snapper creates a nested `.snapshots` subvolume inside each configured
+subvol (`@`, `@home`, `@data1`); Btrfs snapshots are non-recursive, so a nested
+`.snapshots` is automatically excluded from its parent's snapshots.
 
 **Compression by area:** `zstd:1` on the hot, churny system subvolumes (`@`,
 `@home`, `@var_*`) where latency matters; `zstd:3` on the largely-static
 `data1`–`data4`; `data5` omits `compress=` (already-compressed data). The kernel
-adds `ssd`, `discard=async`, `space_cache=v2` automatically (not in fstab).
-**What's split out of `@`:** `@home` and the `@var_*`/`@data*` areas — everything
-you *don't* want reverted by a root rollback (logs, caches, build scratch, user
-data, bulk data). `/opt` and `/usr/local` stay **inside** `@`. There is **no
-`/etc/crypttab`**; LUKS is unlocked by dracut via `rd.luks.uuid=`, and GRUB boots
+auto-applies `ssd` + `space_cache=v2`; TRIM is via the weekly `fstrim.timer`
+(continuous `discard=async` optional). **What's split out of `@`:** `@home` and
+the `@var_*`/`@data*` areas — everything you *don't* want reverted by a root
+rollback (logs, caches, build scratch, user data, bulk data). `/opt` and
+`/usr/local` stay **inside** `@`. There is **no `/etc/crypttab`**; LUKS is
+unlocked by dracut via `rd.luks.uuid=`, and GRUB boots
 `root=UUID=<pool> rootflags=subvol=@`.
 
 ### Swap: 32 G LV + 8 G zram (prioritised)
@@ -151,9 +152,9 @@ update rolls back in seconds), and `/data1` keeps the docs/projects timeline:
 
 The upstream `snapper-timeline.timer` + `snapper-cleanup.timer` (hourly) are
 enabled; `snapper-boot.timer` is **disabled**. `sys-fs/grub-btrfs` adds a GRUB
-submenu to boot any snapshot read-only for rollback. `data2`–`data5` keep an
-empty `.snapshots` subvolume and no config (scratch by default; add a config to
-snapshot them too).
+submenu to boot any snapshot read-only for rollback (enable `grub-btrfsd.service`
+to keep it current). `data2`–`data5` have no config — scratch by default; add a
+config to snapshot them too (snapper makes the `.snapshots` subvolume itself).
 
 > **Live machine status.** On the author's running (pre root→Btrfs) box, only the
 > **`data1`** config exists today (`48 / 14 / 4 / 0`, `ALLOW_USERS=ivmr`, no
@@ -173,8 +174,8 @@ Rationale behind the subvolume choices above:
   paths need it). Add a `/var/lib/*` subvolume (e.g. `@docker → /var/lib/docker`)
   **only if** that workload actually hammers it; otherwise it's just noise.
 - **Mount paths (deliberate):** the data subvolumes mount at top-level
-  `/data1`…`/data5` (each with its own `@dataN_snapshots`), *not* under a
-  `/data/dataN` tree — to avoid churning every path/script/bind-mount that already
+  `/data1`…`/data5`, *not* under a `/data/dataN` tree — to avoid churning every
+  path/script/bind-mount that already
   references `/data1`.
 - **Hibernate swap sizing:** `vg0-swap` is sized **= RAM** (32 G here), the safe
   floor for a full hibernation image. Bump it if RAM ever grows:

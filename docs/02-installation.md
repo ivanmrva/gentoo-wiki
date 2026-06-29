@@ -1,9 +1,14 @@
 # Stage3 Installation
 
-1. Create a directory for the new Gentoo installation and mount the **`@` (root) subvolume** of the Btrfs pool to it:
+1. Mount the **`@` (root) subvolume**, then the system subvolumes **under** it — *before* unpacking and emerging, so install-time writes land in the right subvolume rather than being shadowed when `/etc/fstab` mounts them on first boot. (This matters: with `FEATURES=buildpkg` the `@world` build fills `/var/cache/binpkgs` and `/var/cache/distfiles`; if `@var_cache` isn't mounted now, all of that ends up hidden inside `@` after the first boot.)
    * `mkdir /mnt/gentoo`
    * `mount -o noatime,compress=zstd:1,subvol=@ /dev/mapper/vg0-btrfs /mnt/gentoo`
-   * The other subvolumes (`@home`, `@var_log`, `@var_cache`, `@var_tmp`, `@dataN`, `@portage_build`) are mounted by `/etc/fstab` on first boot; for a fresh stage3 they start empty, which is correct. (If you prefer, mount `@home`/`@var_*` under `/mnt/gentoo` before unpacking so stage3 files land in the right subvolume — optional, since stage3 ships almost nothing in those paths.)
+   * `mkdir -p /mnt/gentoo/{home,var/log,var/cache,var/tmp}`
+   * `mount -o noatime,compress=zstd:1,subvol=@home      /dev/mapper/vg0-btrfs /mnt/gentoo/home`
+   * `mount -o noatime,compress=zstd:1,subvol=@var_log   /dev/mapper/vg0-btrfs /mnt/gentoo/var/log`
+   * `mount -o noatime,compress=zstd:1,subvol=@var_cache /dev/mapper/vg0-btrfs /mnt/gentoo/var/cache`
+   * `mount -o noatime,subvol=@var_tmp                   /dev/mapper/vg0-btrfs /mnt/gentoo/var/tmp`
+   * (`@dataN` and `@portage_build` aren't written during the base install — `/etc/fstab` mounts those on first boot.)
 1. Download and unpack stage3:
    * `cd /mnt/gentoo`
    * Copy link of stage3 archive for _amd64_ architecture for _desktop_ and _systemd_ profile from https://distfiles.gentoo.org/
@@ -186,9 +191,7 @@
 
      # btrfs pool on vg0-btrfs (UUID 048292a5-…) — root (@) + system + data, all one filesystem
      UUID=048292a5-5607-449a-9247-92aad183be1f	/			btrfs	noatime,compress=zstd:1,subvol=@				0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/.snapshots		btrfs	noatime,compress=zstd:1,subvol=@snapshots			0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/home			btrfs	noatime,compress=zstd:1,subvol=@home				0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/home/.snapshots	btrfs	noatime,compress=zstd:1,subvol=@home_snapshots		0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/var/log		btrfs	noatime,compress=zstd:1,subvol=@var_log			0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/var/cache		btrfs	noatime,compress=zstd:1,subvol=@var_cache			0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/var/tmp		btrfs	noatime,subvol=@var_tmp					0 0
@@ -197,22 +200,16 @@
      UUID=048292a5-5607-449a-9247-92aad183be1f	/var/tmp/portage-big	btrfs	noatime,nodatacow,subvol=@portage_build			0 0
 
      UUID=048292a5-5607-449a-9247-92aad183be1f	/data1			btrfs	noatime,compress=zstd:3,subvol=@data1			0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/data1/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data1_snapshots		0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/data2			btrfs	noatime,compress=zstd:3,subvol=@data2			0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/data2/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data2_snapshots		0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/data3			btrfs	noatime,compress=zstd:3,subvol=@data3			0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/data3/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data3_snapshots		0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/data4			btrfs	noatime,compress=zstd:3,subvol=@data4			0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/data4/.snapshots	btrfs	noatime,compress=zstd:3,subvol=@data4_snapshots		0 0
      UUID=048292a5-5607-449a-9247-92aad183be1f	/data5			btrfs	noatime,subvol=@data5					0 0
-     UUID=048292a5-5607-449a-9247-92aad183be1f	/data5/.snapshots	btrfs	noatime,subvol=@data5_snapshots				0 0
      ```
       * **Root and data are one Btrfs filesystem** (`vg0-btrfs`, label `pool`), differentiated only by `subvol=`. `@` is the root; there is no ext4 root LV. `pass` is `0` for every btrfs line (btrfs needs no `fsck`).
-      * **Compression by area:** `zstd:1` on the hot, churny system subvolumes (`@`, `@home`, `@var_*`) where low latency matters; `zstd:3` on the largely-static `data1`–`data4` for a denser ratio; `data5` omits `compress=` (already-compressed/incompressible data). The kernel also applies `ssd,discard=async,space_cache=v2` automatically — those are **not** written in fstab.
+      * **No `.snapshots` lines:** Snapper creates a nested `.snapshots` subvolume inside each configured subvol (`/`, `/home`, `/data1`) when you run `create-config` (see [After Installation](03-after-installation.md#systemd-services) / the [runbook](00-recreate-this-system.md)). Those are nested and managed by snapper, so they get **no** fstab entry of their own.
+      * **Compression by area:** `zstd:1` on the hot, churny system subvolumes (`@`, `@home`, `@var_*`) where low latency matters; `zstd:3` on the largely-static `data1`–`data4` for a denser ratio; `data5` omits `compress=` (already-compressed/incompressible data). The kernel auto-applies `ssd` and `space_cache=v2`; **TRIM is handled by the weekly `fstrim.timer`** (enabled in [After Installation](03-after-installation.md#systemd-services)) — add `discard=async` to the options if you prefer continuous discard.
       * **What's split out of `@`, and why:** `@home` (separate snapshot policy + survives a root rollback), `@var_log`/`@var_cache`/`@var_tmp` (excluded from root snapshots — keep logs across a rollback, never snapshot caches/build scratch), `@dataN` (bulk data), `@portage_build` (`nodatacow` for build churn). `/opt` and `/usr/local` stay **inside** `@` so they roll back with the system.
-      * The `tmpfs` line builds packages in RAM for speed; keep `size` **below** total RAM (20 GiB on a 32 GiB machine) so a big build can't exhaust memory. Builds that exceed it are routed to the on-disk `@portage_build` (`/var/tmp/portage-big`) via `PORTAGE_TMPDIR` in `/etc/portage/env/bigbuild.conf` + `/etc/portage/package.env` (webkit-gtk, llvm, clang, gcc, nodejs, …).
-      * The `tmpfs` line builds packages in RAM for speed. Keep `size` **below** total RAM (20 GiB here, on a 32 GiB machine) so a large build can't exhaust memory.
-      * `/var/tmp/portage-big` is a disk-backed Btrfs subvolume (`@portage_build`, mounted `nodatacow` to avoid CoW churn during builds). Packages whose build dir exceeds the tmpfs are routed here by setting `PORTAGE_TMPDIR=/var/tmp/portage-big` in `/etc/portage/env/bigbuild.conf` and listing them in `/etc/portage/package.env` (webkit-gtk, llvm, clang, gcc, nodejs, plus forward-looking qtwebengine/chromium/rust/libreoffice).
+      * The `tmpfs` line builds packages in RAM for speed; keep `size` **below** total RAM (20 GiB on a 32 GiB machine) so a big build can't exhaust memory. Builds that exceed it route to the on-disk `@portage_build` (`/var/tmp/portage-big`, `nodatacow` to avoid CoW churn) via `PORTAGE_TMPDIR` in `/etc/portage/env/bigbuild.conf` + `/etc/portage/package.env` (webkit-gtk, llvm, clang, gcc, nodejs, …).
 
 # Configure Systemd
 
@@ -248,7 +245,7 @@ Note: _/etc/crypttab_ configuration is not required — dracut unlocks LUKS from
    * `GRUB_CMDLINE_LINUX="dolvm rd.luks.options=discard rd.luks.uuid=<luks-container-uuid> root=UUID=<btrfs-pool-uuid> rootflags=subvol=@ init=/usr/lib/systemd/systemd resume=UUID=<swap-uuid> acpi_backlight=native i915.enable_dpcd_backlight=1"`
       * `root=UUID=<btrfs-pool-uuid> rootflags=subvol=@` boots the `@` subvolume of the Btrfs pool as `/` (there is no separate root device). `rd.luks.uuid=` tells dracut which LUKS container to unlock (the UUID of the **encrypted partition itself**, e.g. `nvme0n1p3`); `resume=UUID=` points at the swap LV for hibernation; the two backlight params fix display brightness on this HP/Intel laptop.
       * Get all UUIDs with `blkid`. (The older `crypt_root=`/`crypt_swap=` form is for genkernel — this guide uses dracut, so use `rd.luks.*`.)
-   * **Boot into snapshots (recommended with a Btrfs root):** `emerge sys-fs/grub-btrfs`. It adds a GRUB submenu listing your Snapper snapshots, so a kernel/userspace update that won't boot can be recovered by booting the previous read-only `@` snapshot and rolling back — the payoff of putting `/` on Btrfs. Re-run `grub-mkconfig -o /boot/grub/grub.cfg` after installing it.
+   * **Boot into snapshots (recommended with a Btrfs root):** `emerge sys-fs/grub-btrfs`. It adds a GRUB submenu listing your Snapper snapshots, so a kernel/userspace update that won't boot can be recovered by booting the previous read-only `@` snapshot and rolling back — the payoff of putting `/` on Btrfs. Run `grub-mkconfig -o /boot/grub/grub.cfg` once to generate the submenu, then enable `grub-btrfsd.service` (`systemctl enable --now grub-btrfsd`) so it regenerates automatically as new snapshots appear. (GRUB still loads the kernel + initramfs from the vfat `/boot`; a snapshot entry just boots them with `rootflags=subvol=…/.snapshots/N/snapshot`.)
       * **Do not** add `mem_sleep_default=deep` here. An earlier iteration of this cmdline carried it, but it was deliberately dropped (2026-06-16) when switching to **suspend-then-hibernate** (s2idle first, RTC-wake to hibernate later — see `/etc/systemd/sleep.conf.d/10-hibernate.conf`); forcing `deep` (S3) is incompatible with that flow. A `/etc/default/grub.bak-presuspend` backup preserves the old line.
    * Also set `GRUB_TIMEOUT=2` and `GRUB_DISTRIBUTOR="Gentoo"` as desired.
 1. Generate the GRUB configuration:

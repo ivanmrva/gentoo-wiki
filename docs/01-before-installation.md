@@ -52,20 +52,19 @@
    * `mkfs.btrfs -L pool /dev/mapper/vg0-btrfs` (single-device btrfs; defaults give `data single`, `metadata DUP`)
 1. Create the Btrfs subvolumes. Mount the pool somewhere temporary, create every subvolume, then unmount — `/etc/fstab` mounts each one by `subvol=` at its real mountpoint later:
    * `mkdir -p /mnt/pool && mount /dev/mapper/vg0-btrfs /mnt/pool`
-   * **System + home** (these get Snapper snapshots):
+   * **System + home** (these get Snapper snapshots later):
       * `btrfs subvolume create /mnt/pool/@`               → `/` (the OS root)
       * `btrfs subvolume create /mnt/pool/@home`           → `/home`
-      * `btrfs subvolume create /mnt/pool/@snapshots`      → `/.snapshots` (root snapshot store)
-      * `btrfs subvolume create /mnt/pool/@home_snapshots` → `/home/.snapshots`
    * **Split deliberately *out* of the root snapshot** — so they are *not* rolled back with `/` (you keep logs across a rollback, and caches/build scratch never bloat a snapshot):
       * `btrfs subvolume create /mnt/pool/@var_log`        → `/var/log`
       * `btrfs subvolume create /mnt/pool/@var_cache`      → `/var/cache`
       * `btrfs subvolume create /mnt/pool/@var_tmp`        → `/var/tmp`
-   * **Data areas** (only `data1` gets a Snapper config by default; the rest start with an empty `.snapshots`):
-      * `for n in 1 2 3 4 5; do btrfs subvolume create /mnt/pool/@data$n; btrfs subvolume create /mnt/pool/@data${n}_snapshots; done`
+   * **Data areas:**
+      * `for n in 1 2 3 4 5; do btrfs subvolume create /mnt/pool/@data$n; done`
    * **On-disk Portage build area** for builds that exceed the RAM tmpfs:
       * `btrfs subvolume create /mnt/pool/@portage_build`  → `/var/tmp/portage-big`
    * `umount /mnt/pool`
+   * **Don't create the `.snapshots` subvolumes by hand.** Snapper makes one per config later (`snapper -c root create-config /`, `… home …`, `… data1 …`) — and `create-config` *fails* if `.snapshots` already exists. The `.snapshots` it creates is a **nested** subvolume; because Btrfs snapshots are non-recursive, it's automatically excluded from the parent's snapshots, so no separate top-level subvol or fstab line is needed for it.
    * `/opt` and `/usr/local` are intentionally **not** split out — they stay inside `@` so they roll back together with the system. The rule: split a subvolume off `@` only for things you *don't* want reverted by a root rollback (logs, caches, build scratch, `/home`, bulk data).
    * **No per-area sizing:** every subvolume draws from the same ~920 GiB pool, so `/`, `/home`, and each `/dataN` grow until the whole pool is full — no fixed capacity walls. Mount options (compression, `nodatacow`) are set in `/etc/fstab`, not here.
 1. Verify LVM setup:
