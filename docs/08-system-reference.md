@@ -645,8 +645,6 @@ These won't appear in `@world`/`qlist`, and the **config mirror tracks only thei
 [rebuild ledger](00-recreate-this-system.md#what-these-docs-capture--and-what-you-must-bring-yourself)):
 
 - **IntelliJ IDEA Ultimate** — `/opt/idea-IU-261.24374.151`, via JetBrains Toolbox.
-- **Claude Desktop** — unofficial AppImage at `~/.local/opt/claude-desktop`
-  (handles `claude://`).
 - **Claude Code** — npm-global `@anthropic-ai/claude-code` (handles `claude-cli://`).
 - **OpenClaw** — npm-global; runs as a user-scope service
   (`openclaw-gateway.service`, gateway on port 18789). Its config tree

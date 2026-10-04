@@ -13,9 +13,9 @@ ladder — drop to the next rung only when the one above can't deliver the app.
 are deliberately the **`-bin`** Portage packages — `firefox-bin`,
 `google-chrome`, `libreoffice-bin`, `thunderbird-bin`, plus `slack`, `zoom`, and
 `vscode` — so they're still managed by `emerge` but don't cost hours of
-from-source compile time. The **only** things outside Portage are three:
+from-source compile time. The **only** things outside Portage are two:
 IntelliJ IDEA Ultimate (via JetBrains Toolbox, see
-[Editors & IDE](#editors--ide)), the unofficial Claude Desktop AppImage, and the
+[Editors & IDE](#editors--ide)) and the
 npm-global CLIs `@anthropic-ai/claude-code`, `openclaw`, and `pnpm` (see
 [Non-Portage AI tooling](#non-portage-ai-tooling)).
 **Why:** keep dev-adjacent tools native so they share the system toolchain,
@@ -46,14 +46,12 @@ and dev containers. Same logic keeps Docker, Git, Node, `openjdk-bin`/`maven-bin
 > **Claude Code** (the npm-global CLI + the VS Code `anthropic.claude-code`
 > extension) is the **primary** tool for repo and coding work on this machine and
 > is officially shipped for Linux.
-> **Claude Desktop** here is an **unofficial AppImage**
-> (`~/.local/opt/claude-desktop/claude-desktop.AppImage`) — Anthropic doesn't
-> officially ship Desktop for Linux. Keep it only if you specifically want the
-> GUI (Cowork-style workflows, desktop extensions, mobile handoff); plain chat is
-> covered by the web/PWA.
+> **Claude Desktop** is **not installed** (the unofficial
+> `aaddrick/claude-desktop-debian` AppImage was removed 2026-10-04, along with
+> `~/.config/Claude` and its `claude://` handler). Anthropic doesn't officially
+> ship Desktop for Linux; plain chat is covered by the web/PWA.
 > **Why:** the caveat is package **provenance**, not format — a Flatpak build
-> wouldn't make Desktop any more official, so AppImage (the bottom rung, used
-> only because nothing better exists) is fine here as long as you know it's
+> wouldn't make Desktop any more official. If you reinstall it, know it's
 > unofficial and self-updating outside `emerge`.
 
 # Docker
@@ -141,9 +139,6 @@ hand (see the [rebuild ledger](00-recreate-this-system.md#what-these-docs-captur
   (`~/.npm-global/lib64/node_modules/@anthropic-ai/claude-code`). It handles the
   `claude-cli://` deep-link scheme: `claude-code-url-handler.desktop` maps
   `x-scheme-handler/claude-cli` to it (mimeapps.list).
-* **Claude Desktop** — the unofficial AppImage at
-  `~/.local/opt/claude-desktop/claude-desktop.AppImage`. It handles the
-  `claude://` scheme (`x-scheme-handler/claude` → `claude-desktop.desktop`).
 * **OpenClaw** — also npm-global (`~/.npm-global/lib64/node_modules/openclaw`),
   run as a **user-scope** systemd service rather than a CLI:
   `openclaw-gateway.service` (`~/.config/systemd/user/`) runs
