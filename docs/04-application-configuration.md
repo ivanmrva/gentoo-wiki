@@ -215,7 +215,9 @@ SMART scripts) and `/usr/local/sbin` (the firmware script).
     **and user** units, disks ≥ 90 % full, and the result of each restic job.
   * **GENTOO MAINTENANCE** — available `@world` update count, GLSA security
     advisories, unread news, pending `._cfg` config merges, preserved-lib
-    rebuilds.
+    rebuilds, and whether Anthropic's apt index has a newer Claude Desktop than
+    the installed `::local` `app-misc/claude-desktop` (alerts if so; a failed
+    fetch is only noted).
   * **HEALTH TRENDS** — battery design-capacity %, NVMe SMART
     health/wear/power-on-hours + last self-test.
   * **BACKUPS** — restic job freshness from `/var/lib/restic-monitor/*.stamp`.
