@@ -370,8 +370,11 @@ sync-uri  = rsync://rsync.gentoo.org/gentoo-portage
 ```
 
 Overlays: `eselect repository list -i` shows only `gentoo` + the `local`
-overlay (`/var/db/repos/local`, not git-tracked), which holds one package:
-`app-misc/claude-desktop` (see [04](04-application-configuration.md#claude-on-linux--provenance-caveat)). The system `/etc/gitconfig` still carries a
+overlay (`/var/db/repos/local`), which holds one package:
+`app-misc/claude-desktop` (see [04](04-application-configuration.md#claude-on-linux--provenance-caveat)).
+It is mirrored in this repo as [`local-overlay/`](../local-overlay/); restore with
+`sudo cp -r local-overlay/. /var/db/repos/local/ && sudo chown -R portage:portage /var/db/repos/local`.
+After changing the overlay, copy it back here (skip the generated `metadata/md5-cache`). The system `/etc/gitconfig` still carries a
 `safe.directory` entry for a **GURU** overlay (`/var/db/repos/guru`), but that
 directory does **not** currently exist and GURU is not an enabled repo — the
 entry is a **stale leftover** (a removed/never-finished overlay; harmless, a
