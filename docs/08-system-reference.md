@@ -369,8 +369,9 @@ sync-type = rsync
 sync-uri  = rsync://rsync.gentoo.org/gentoo-portage
 ```
 
-Overlays: `eselect repository list -i` shows only `gentoo` + an empty `local`
-overlay (`/var/db/repos/local`). The system `/etc/gitconfig` still carries a
+Overlays: `eselect repository list -i` shows only `gentoo` + the `local`
+overlay (`/var/db/repos/local`, not git-tracked), which holds one package:
+`app-misc/claude-desktop` (see [04](04-application-configuration.md#claude-on-linux--provenance-caveat)). The system `/etc/gitconfig` still carries a
 `safe.directory` entry for a **GURU** overlay (`/var/db/repos/guru`), but that
 directory does **not** currently exist and GURU is not an enabled repo — the
 entry is a **stale leftover** (a removed/never-finished overlay; harmless, a

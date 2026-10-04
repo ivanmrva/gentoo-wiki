@@ -46,13 +46,20 @@ and dev containers. Same logic keeps Docker, Git, Node, `openjdk-bin`/`maven-bin
 > **Claude Code** (the npm-global CLI + the VS Code `anthropic.claude-code`
 > extension) is the **primary** tool for repo and coding work on this machine and
 > is officially shipped for Linux.
-> **Claude Desktop** is **not installed** (the unofficial
-> `aaddrick/claude-desktop-debian` AppImage was removed 2026-10-04, along with
-> `~/.config/Claude` and its `claude://` handler). Anthropic doesn't officially
-> ship Desktop for Linux; plain chat is covered by the web/PWA.
-> **Why:** the caveat is package **provenance**, not format — a Flatpak build
-> wouldn't make Desktop any more official. If you reinstall it, know it's
-> unofficial and self-updating outside `emerge`.
+> **Claude Desktop** is Anthropic's **official** Linux build (beta since
+> 2026-06-30, shipped only as an apt repo for Ubuntu/Debian), repackaged by a
+> hand-written `::local` ebuild, `app-misc/claude-desktop`, that unpacks the
+> official `.deb` into `/opt/claude-desktop`. It handles `claude://`
+> (`com.anthropic.Claude.desktop`). `USE=cowork` (default on) pulls
+> `app-emulation/qemu[slirp,seccomp]` + `app-emulation/virtiofsd` and symlinks
+> `/usr/share/OVMF/OVMF_{CODE,VARS}.fd` → `/usr/share/edk2/OvmfX64/`, the only
+> firmware paths Cowork probes. Cowork also needs the user in the `kvm` group:
+> qemu's `65-kvm.rules` makes `/dev/kvm` and `/dev/vhost-vsock` `0660 root:kvm`,
+> overriding systemd's `0666`.
+> **Why:** keeps it under `emerge` with Anthropic's own binary instead of the
+> unofficial `aaddrick/claude-desktop-debian` AppImage it replaced. It does
+> **not** self-update on Linux: bump the ebuild to the newest `Version:` in
+> `https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages`.
 
 # Docker
 
