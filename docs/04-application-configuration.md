@@ -16,7 +16,7 @@ are deliberately the **`-bin`** Portage packages — `firefox-bin`,
 from-source compile time. The **only** things outside Portage are two:
 IntelliJ IDEA Ultimate (via JetBrains Toolbox, see
 [Editors & IDE](#editors--ide)) and the
-npm-global CLIs `@anthropic-ai/claude-code`, `openclaw`, and `pnpm` (see
+npm-global CLIs `@anthropic-ai/claude-code`, `@openai/codex`, and `pnpm` (see
 [Non-Portage AI tooling](#non-portage-ai-tooling)).
 **Why:** keep dev-adjacent tools native so they share the system toolchain,
 credential stores, Docker socket, SSH agent, and language servers — Portage gives
@@ -58,8 +58,28 @@ and dev containers. Same logic keeps Docker, Git, Node, `openjdk-bin`/`maven-bin
 > overriding systemd's `0666`.
 > **Why:** keeps it under `emerge` with Anthropic's own binary instead of the
 > unofficial `aaddrick/claude-desktop-debian` AppImage it replaced. It does
-> **not** self-update on Linux: bump the ebuild to the newest `Version:` in
-> `https://downloads.claude.ai/claude-desktop/apt/stable/dists/stable/main/binary-amd64/Packages`.
+> **not** self-update on Linux. The daily digest flags a newer version in
+> Anthropic's apt index; then run `claude-desktop-bump` (in `/usr/local/bin`, as
+> your user). It shows changes to the `.deb`'s dependency list, creates the new
+> ebuild, checks the `.deb`'s SHA256 against the index, previews and runs the
+> emerge, drops the old ebuild, and commits the synced `local-overlay/` here.
+> If the checksum or the emerge fails it removes the new ebuild again.
+> `--check` only reports; `--dry-run` prints the commands without running them.
+
+> **ChatGPT desktop** (Chat, Work and the **Codex app**) is OpenAI's official
+> Linux build (preview since 2026-08-11, shipped only as `.deb`/`.rpm` plus an
+> apt repo at `persistent.oaistatic.com/codex-app-prod/linux/deb`), repackaged
+> the same way by `app-misc/chatgpt-desktop`: the `.deb` (package `chatgpt`)
+> unpacks into `/opt/chatgpt`, `/usr/bin/chatgpt` launches it. Its postinst
+> (apt repo + AppArmor profile) is skipped. It has no setuid `chrome-sandbox`, so
+> it relies on unprivileged user namespaces (`CONFIG_USER_NS=y`). Extra
+> dependency: `app-crypt/tpm2-tss`. Its desktop entry also claims `http`/`https`,
+> so check GNOME's default browser after the first install. Its Electron profile
+> `~/.config/Codex` is pruned from the config tracker. Updates work like Claude
+> Desktop's: the digest flags a newer version in OpenAI's index, then run
+> `chatgpt-desktop-bump` (same flags). OpenAI's index lists only the newest
+> version, so the script can't diff dependencies; it prints the new list for
+> you to check against the ebuild's `RDEPEND`.
 
 # Docker
 
@@ -136,7 +156,7 @@ it's a Toolbox install, it self-updates outside `emerge` and won't appear in
 None of these are Portage packages — they're installed via `npm` (global prefix
 `~/.npm-global`; Node itself is Portage's `net-libs/nodejs`) or as an AppImage, so
 they don't show up in `@world`/`qlist` and they self-update outside `emerge`. The
-full global-npm set is `@anthropic-ai/claude-code`, `openclaw`, and `pnpm`. Each
+full global-npm set is `@anthropic-ai/claude-code`, `@openai/codex`, and `pnpm`. Each
 app registers a desktop entry under `~/.local/share/applications/` (so the
 `.desktop` files *are* tracked by the config mirror) — but **the packages
 themselves are not versioned anywhere**, so on a rebuild you reinstall them by
@@ -146,20 +166,10 @@ hand (see the [rebuild ledger](00-recreate-this-system.md#what-these-docs-captur
   (`~/.npm-global/lib64/node_modules/@anthropic-ai/claude-code`). It handles the
   `claude-cli://` deep-link scheme: `claude-code-url-handler.desktop` maps
   `x-scheme-handler/claude-cli` to it (mimeapps.list).
-* **OpenClaw** — also npm-global (`~/.npm-global/lib64/node_modules/openclaw`),
-  run as a **user-scope** systemd service rather than a CLI:
-  `openclaw-gateway.service` (`~/.config/systemd/user/`) runs
-  `node …/openclaw/dist/index.js gateway --port 18789` with `Restart=always` and
-  is **enabled + active**. `~/.bashrc` also sources its bash completion
-  (`~/.openclaw/completions/openclaw.bash`). Manage it with
-  `systemctl --user status openclaw-gateway`.
-  * **Config gap:** OpenClaw's state lives under `~/.openclaw/` (`openclaw.json`
-    plus `agents/`, `devices/`, `workspace/`, …) and is **not** in the
-    `system-changes` allowlist, so it isn't versioned. Its `credentials/` and
-    `identity/` are secrets (keep them off the mirror), but you may want to add
-    `~/.openclaw/openclaw.json` to the
-    [allowlist](#config-tracking-changes-only-git-mirror) so the gateway config is
-    tracked.
+* **Codex** — OpenAI's coding-agent CLI, npm-global as `@openai/codex`
+  (`~/.npm-global/lib64/node_modules/@openai/codex`), the counterpart to Claude
+  Code. Its GUI is part of the ChatGPT desktop app (see below), which is
+  optional.
 * **pnpm** — the global npm package manager
   (`~/.npm-global/lib64/node_modules/pnpm`), installed the same way; no desktop
   entry (CLI only).
@@ -216,7 +226,8 @@ SMART scripts) and `/usr/local/sbin` (the firmware script).
   * **GENTOO MAINTENANCE** — available `@world` update count, GLSA security
     advisories, unread news, pending `._cfg` config merges, preserved-lib
     rebuilds, and whether Anthropic's apt index has a newer Claude Desktop than
-    the installed `::local` `app-misc/claude-desktop` (alerts if so; a failed
+    the installed `::local` `app-misc/claude-desktop`, and the same for
+    `app-misc/chatgpt-desktop` against OpenAI's index (alerts if so; a failed
     fetch is only noted).
   * **HEALTH TRENDS** — battery design-capacity %, NVMe SMART
     health/wear/power-on-hours + last self-test.

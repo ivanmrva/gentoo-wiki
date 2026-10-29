@@ -370,11 +370,12 @@ sync-uri  = rsync://rsync.gentoo.org/gentoo-portage
 ```
 
 Overlays: `eselect repository list -i` shows only `gentoo` + the `local`
-overlay (`/var/db/repos/local`), which holds one package:
-`app-misc/claude-desktop` (see [04](04-application-configuration.md#claude-on-linux--provenance-caveat)).
+overlay (`/var/db/repos/local`), which holds two packages:
+`app-misc/claude-desktop` and `app-misc/chatgpt-desktop` (see [04](04-application-configuration.md#claude-on-linux--provenance-caveat)).
 It is mirrored in this repo as [`local-overlay/`](../local-overlay/); restore with
 `sudo cp -r local-overlay/. /var/db/repos/local/ && sudo chown -R portage:portage /var/db/repos/local`.
-After changing the overlay, copy it back here (skip the generated `metadata/md5-cache`). The system `/etc/gitconfig` still carries a
+`claude-desktop-bump` and `chatgpt-desktop-bump` re-sync it here on every version bump; after editing the
+overlay by hand, copy it back yourself (skip the generated `metadata/md5-cache`). The system `/etc/gitconfig` still carries a
 `safe.directory` entry for a **GURU** overlay (`/var/db/repos/guru`), but that
 directory does **not** currently exist and GURU is not an enabled repo — the
 entry is a **stale leftover** (a removed/never-finished overlay; harmless, a
@@ -533,7 +534,7 @@ TLP power-down helper disabled in favour of plain `tlp`.
   Descriptions (a couple still name the old provider); the pre-migration
   `*.bak.*-20260621` unit copies also linger.
 
-User-scope units (the OpenClaw gateway, retired rclone-mount leftovers) live
+User-scope units (retired rclone-mount leftovers) live
 under `~/.config/systemd/user` and are out of scope for this system-level table.
 
 ## Networking & firewall
@@ -650,9 +651,7 @@ These won't appear in `@world`/`qlist`, and the **config mirror tracks only thei
 
 - **IntelliJ IDEA Ultimate** — `/opt/idea-IU-261.24374.151`, via JetBrains Toolbox.
 - **Claude Code** — npm-global `@anthropic-ai/claude-code` (handles `claude-cli://`).
-- **OpenClaw** — npm-global; runs as a user-scope service
-  (`openclaw-gateway.service`, gateway on port 18789). Its config tree
-  `~/.openclaw/` is **not** in the tracker allowlist (untracked gap).
+- **Codex** — npm-global `@openai/codex` (OpenAI's coding-agent CLI).
 - **pnpm** — npm-global package manager (CLI only, no desktop entry).
 
 (Node is Portage's `net-libs/nodejs`; only the *global npm packages* above sit
