@@ -62,7 +62,7 @@ and dev containers. Same logic keeps Docker, Git, Node, `openjdk-bin`/`maven-bin
 > Anthropic's apt index; then run `claude-desktop-bump` (in `/usr/local/bin`, as
 > your user). It shows changes to the `.deb`'s dependency list, creates the new
 > ebuild, checks the `.deb`'s SHA256 against the index, previews and runs the
-> emerge, drops the old ebuild, and commits the synced `gentoo/local-overlay/` here.
+> emerge and drops the old ebuild; `system-changes` then commits the overlay.
 > If the checksum or the emerge fails it removes the new ebuild again.
 > `--check` only reports; `--dry-run` prints the commands without running them.
 
