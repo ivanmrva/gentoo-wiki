@@ -372,8 +372,8 @@ sync-uri  = rsync://rsync.gentoo.org/gentoo-portage
 Overlays: `eselect repository list -i` shows only `gentoo` + the `local`
 overlay (`/var/db/repos/local`), which holds two packages:
 `app-misc/claude-desktop` and `app-misc/chatgpt-desktop` (see [04](04-application-configuration.md#claude-on-linux--provenance-caveat)).
-It is mirrored in this repo as [`local-overlay/`](../local-overlay/); restore with
-`sudo cp -r local-overlay/. /var/db/repos/local/ && sudo chown -R portage:portage /var/db/repos/local`.
+It is mirrored in this repo as [`local-overlay/`](local-overlay/); restore with
+`sudo cp -r gentoo/local-overlay/. /var/db/repos/local/ && sudo chown -R portage:portage /var/db/repos/local`.
 `claude-desktop-bump` and `chatgpt-desktop-bump` re-sync it here on every version bump; after editing the
 overlay by hand, copy it back yourself (skip the generated `metadata/md5-cache`). The system `/etc/gitconfig` still carries a
 `safe.directory` entry for a **GURU** overlay (`/var/db/repos/guru`), but that

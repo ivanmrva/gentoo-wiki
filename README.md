@@ -1,26 +1,13 @@
-# Gentoo Linux Documentation
+# Laptop setup: Gentoo and NixOS
 
-A personal, opinionated guide to installing and configuring Gentoo Linux on a
-laptop with full-disk encryption (LUKS + LVM), systemd, GNOME and an Intel
-platform. A single **Btrfs pool** (on LUKS2 + LVM) holds **root (`@`) and data**
-as subvolumes — with Snapper snapshots, `grub-btrfs` snapshot-boot, and zram swap.
+Personal, opinionated documentation of the author's laptop setups.
 
-📖 **Start here: [docs/](docs/README.md)** — or jump straight to the
-[step-by-step recreate/migrate runbook](docs/00-recreate-this-system.md).
-
-1. [Before Installation](docs/01-before-installation.md)
-2. [Installation](docs/02-installation.md)
-3. [After Installation](docs/03-after-installation.md)
-4. [Application Configuration](docs/04-application-configuration.md)
-5. [Troubleshooting](docs/05-troubleshooting.md)
-
-Reference: [System Reference](docs/08-system-reference.md) (incl. the
-[roadmap](docs/08-system-reference.md#roadmap--live-machine-status)) ·
-[Backup, clone & restore](docs/09-backup-restore.md) ·
-[Access System from a Live USB](docs/06-access-system-from-live-usb.md) ·
-[Various Tasks](docs/07-various-tasks.md)
+| Folder | What |
+| --- | --- |
+| **[gentoo/](gentoo/README.md)** | The current Gentoo Linux installation (HP ZBook Firefly G9): full-disk encryption (LUKS + LVM), a single Btrfs pool, systemd, GNOME, Snapper and restic backups. Includes the step-by-step [recreate/migrate runbook](gentoo/00-recreate-this-system.md), the [System Reference](gentoo/08-system-reference.md), [backup & restore](gentoo/09-backup-restore.md), and the `::local` overlay in [gentoo/local-overlay/](gentoo/local-overlay/). |
+| **[nixos/](nixos/README.md)** | Its successor on the HP ZBook 8 G1i 14": the [installation guide](nixos/install/README.md) and the [daily operations guide](nixos/operations/README.md), plus `nixos/tools/md2pdf.sh` to render them as PDFs. |
 
 > Adapt device names, UUIDs, and hardware-specific flags to your own machine.
-> Where this guide intentionally diverges from the
+> Where the Gentoo guide intentionally diverges from the
 > [official Gentoo Handbook](https://wiki.gentoo.org/wiki/Handbook:Main_Page),
 > it says so. Corrections and pull requests welcome.
